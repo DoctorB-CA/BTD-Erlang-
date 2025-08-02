@@ -8,7 +8,7 @@
 -define(DEBUG, false).
 
 start(Level) ->
-    dprint('hello'),
+    dprint('i am on start'),
     gen_statem:start_link({local, ?MODULE}, ?MODULE, Level, []).
 init(Level) ->
     process_flag(trap_exit, true),  %for seeing debugs
