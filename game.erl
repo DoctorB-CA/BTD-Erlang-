@@ -1,10 +1,9 @@
 -module(game).
 -export([play/0]).
 
-% Main function to start the test
+% Main function to play the game
 play() ->
     % Compile all game modules
-    io:format("Compiling run...~n"),
-
-    % Start the game server
+    compile:file(run),
+    % Start the game
     run:start().
