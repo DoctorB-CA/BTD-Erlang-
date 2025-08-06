@@ -2,74 +2,67 @@
 -behaviour(gen_statem).
 
 -export([start_link/4]).
--export([init/1, callback_mode/0, moving/3]).
+-export([init/1, callback_mode/0, homing/3, terminate/3]).
 
--define(DART_SPEED, 8).
--define(DART_TICK_INTERVAL, 50).
--define(HIT_RADIUS, 5.0).
+-define(MOVE_INTERVAL, 200). % Darts move faster than balloons
 
 -record(state, {
-    current_pos,
-    target_id,
-    target_pid,
-    dart_spec
+    id,
+    target_pid :: pid(),
+    target_mref :: reference(), % To store the monitor reference
+    spec,
+    pos
 }).
 
-%==================================================================
-% Public API Functions
-%==================================================================
+start_link(Id, Pos, TargetPid, Spec) ->
+    gen_statem:start_link(?MODULE, [Id, Pos, TargetPid, Spec], []).
 
-start_link(DartSpec, StartPos, TargetId, TargetPid) ->
-    gen_statem:start_link(?MODULE, [DartSpec, StartPos, TargetId, TargetPid], []).
-
-%==================================================================
-% gen_statem Callbacks
-%==================================================================
-
-init([DartSpec, StartPos, TargetId, TargetPid]) ->
+init([Id, Pos, TargetPid, Spec]) ->
+    % THIS IS THE KEY: The dart monitors the balloon's process.
+    MRef = erlang:monitor(process, TargetPid),
+    io:format("Dart ~p created, monitoring balloon ~p~n", [Id, TargetPid]),
     StateData = #state{
-        current_pos = StartPos,
-        target_id = TargetId,
+        id = Id,
         target_pid = TargetPid,
-        dart_spec = DartSpec
+        target_mref = MRef,
+        spec = Spec,
+        pos = Pos
     },
-    {ok, moving, StateData, {state_timeout, 0, move}}.
+    % Start moving immediately
+    {ok, homing, StateData, {state_timeout, 0, move}}.
 
 callback_mode() ->
     state_functions.
 
-moving(state_timeout, move, State = #state{current_pos = CurrentPos, target_id = TargetId, target_pid = TargetPid}) ->
-    % FIXED: Changed 'game_state_server' to 's'
-    case s:get_balloon_pos(TargetId) of
-        not_found ->
-            {stop, normal, State};
+% This is the handler for the one-way link.
+% If the balloon dies, this function is triggered.
+homing(info, {'DOWN', MRef, process, _Pid, _Reason}, State = #state{target_mref = MRef, id = Id}) ->
+    io:format("Dart ~p terminating because its target is down.~n", [Id]),
+    {stop, normal, State};
+
+homing(state_timeout, move, State = #state{id = Id, pos = MyPos, target_pid = TargetPid, spec = Spec}) ->
+    % Ask the world/zone for the balloon's current position
+    case world_server:get_balloon_pos(TargetPid) of
         {ok, TargetPos} ->
-            case distance(CurrentPos, TargetPos) < ?HIT_RADIUS of
-                true ->
-                    % FIXED: Changed 'balloon_statem' to 'b'
-                    b:take_damage(TargetPid, State#state.dart_spec),
+            % Simple logic: move towards the target. A real implementation would be more complex.
+            {DX, DY} = {element(1, TargetPos) - element(1, MyPos), element(2, TargetPos) - element(2, MyPos)},
+            Dist = math:sqrt(DX*DX + DY*DY),
+            if
+                Dist < 10 -> % We are close enough to hit
+                    io:format("Dart ~p hit balloon ~p!~n", [Id, TargetPid]),
+                    b:take_damage(TargetPid, Spec),
                     {stop, normal, State};
-                false ->
-                    NewPos = calculate_next_step(CurrentPos, TargetPos, ?DART_SPEED),
-                    NewState = State#state{current_pos = NewPos},
-                    {keep_state, NewState, {state_timeout, ?DART_TICK_INTERVAL, move}}
-            end
+                true ->
+                    % Move a fraction of the way towards the target
+                    NewX = element(1, MyPos) + (DX / Dist) * 20,
+                    NewY = element(2, MyPos) + (DY / Dist) * 20,
+                    {keep_state, State#state{pos = {NewX, NewY}}, {state_timeout, ?MOVE_INTERVAL, move}}
+            end;
+        not_found ->
+            % The balloon is no longer registered, so we should stop.
+            io:format("Dart ~p terminating because its target was not found.~n", [Id]),
+            {stop, normal, State}
     end.
 
-%==================================================================
-% Internal Functions
-%==================================================================
-
-calculate_next_step({X1, Y1}, {X2, Y2}, Speed) ->
-    Dist = distance({X1, Y1}, {X2, Y2}),
-    if
-        Dist == 0 -> {X1, Y1};
-        true ->
-            Ratio = Speed / Dist,
-            StepX = (X2 - X1) * Ratio,
-            StepY = (Y2 - Y1) * Ratio,
-            {X1 + StepX, Y1 + StepY}
-    end.
-
-distance({X1, Y1}, {X2, Y2}) ->
-    math:sqrt(math:pow(X2 - X1, 2) + math:pow(Y2 - Y1, 2)).
+terminate(_Reason, _StateName, _StateData) ->
+    ok.

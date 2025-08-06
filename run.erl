@@ -3,16 +3,13 @@
 
 % Main function to start the test
 start() ->
-    % Compile all game modules
+    % Compile all game modules, including the new supervisor and servers
     io:format("Compiling modules...~n"),
-    compile:file(s),
-    compile:file(m),
-    compile:file(b),
-    compile:file(d),
+    [compile:file(M) || M <- [game_sup, world_server, zone_server, m, b, d]],
 
-    % Start the game server
-    io:format("Starting game server...~n"),
-    s:start_link(),
+    % Start the main game supervisor. This will start the world and all zones.
+    io:format("Starting game supervisor...~n"),
+    game_sup:start_link(),
 
     % Define different dart types
     NormalDart = #{type => normal, damage => 1, throw_interval => 1000},
@@ -38,9 +35,10 @@ balloon_loop(Count) ->
 
 % Helper function to spawn a single balloon
 spawn_balloon(Id) ->
-    % Give balloons varying HP to make it more interesting
-    Hp = 2 + (Id rem 3),
+    % Adjusted HP to a more reasonable level for testing
+    Hp = 2 + (Id rem 5),
     BalloonId = list_to_atom("b" ++ integer_to_list(Id)),
-    Path = [{0, 105}, {200, 105}],
+    % Path kept within the 0-399 world boundaries
+    Path = [{0,50},{0,100},{0,150},{0,200},{0,250},{0,300},{0,350}],
     io:format("Spawning balloon ~p with ~p HP.~n", [BalloonId, Hp]),
     b:start_link(BalloonId, Hp, Path).
