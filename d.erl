@@ -15,16 +15,8 @@
     dart_spec
 }).
 
-%==================================================================
-% Public API Functions
-%==================================================================
-
 start_link(DartSpec, StartPos, TargetId, TargetPid) ->
     gen_statem:start_link(?MODULE, [DartSpec, StartPos, TargetId, TargetPid], []).
-
-%==================================================================
-% gen_statem Callbacks
-%==================================================================
 
 init([DartSpec, StartPos, TargetId, TargetPid]) ->
     StateData = #state{
@@ -39,14 +31,12 @@ callback_mode() ->
     state_functions.
 
 moving(state_timeout, move, State = #state{current_pos = CurrentPos, target_id = TargetId, target_pid = TargetPid}) ->
-    % FIXED: Changed 'game_state_server' to 's'
-    case s:get_balloon_pos(TargetId) of
+    case world_server:get_balloon_pos(TargetId) of
         not_found ->
             {stop, normal, State};
         {ok, TargetPos} ->
             case distance(CurrentPos, TargetPos) < ?HIT_RADIUS of
                 true ->
-                    % FIXED: Changed 'balloon_statem' to 'b'
                     b:take_damage(TargetPid, State#state.dart_spec),
                     {stop, normal, State};
                 false ->
@@ -55,10 +45,6 @@ moving(state_timeout, move, State = #state{current_pos = CurrentPos, target_id =
                     {keep_state, NewState, {state_timeout, ?DART_TICK_INTERVAL, move}}
             end
     end.
-
-%==================================================================
-% Internal Functions
-%==================================================================
 
 calculate_next_step({X1, Y1}, {X2, Y2}, Speed) ->
     Dist = distance({X1, Y1}, {X2, Y2}),
