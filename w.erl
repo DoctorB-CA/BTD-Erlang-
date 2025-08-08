@@ -14,6 +14,11 @@
 -define(TICK_INTERVAL, 25).
 -define(DART_WIDTH, 35).
 -define(DART_HEIGHT, 25).
+% The full map is 4x wider than a single canvas
+-define(FULL_MAP_WIDTH, ?CANVAS_WIDTH * 4).
+-define(FULL_MAP_HEIGHT, ?CANVAS_HEIGHT).
+% NEW: Define the scaling factor for the full map view
+-define(FULL_MAP_SCALE, 0.5).
 
 start() ->
     spawn(fun ?MODULE:init/0).
@@ -34,7 +39,6 @@ init() ->
     AirBitmap = wxBitmap:new(wxImage:scale(wxImage:new(ImagesPath ++ "air_monkey.png"), ?BUTTON_WIDTH, ?BUTTON_HEIGHT)),
     WaterBitmap = wxBitmap:new(wxImage:scale(wxImage:new(ImagesPath ++ "water_monkey.png"), ?BUTTON_WIDTH, ?BUTTON_HEIGHT)),
     AvatarBitmap = wxBitmap:new(wxImage:scale(wxImage:new(ImagesPath ++ "avatar_monkey.png"), ?BUTTON_WIDTH, ?BUTTON_HEIGHT)),
-    % NEW: Load all four maps into a list of bitmaps
     MapBitmaps = [
         wxBitmap:new(wxImage:scale(wxImage:new(ImagesPath ++ "map1.png"), ?CANVAS_WIDTH, ?CANVAS_HEIGHT)),
         wxBitmap:new(wxImage:scale(wxImage:new(ImagesPath ++ "map2.png"), ?CANVAS_WIDTH, ?CANVAS_HEIGHT)),
@@ -56,8 +60,8 @@ init() ->
     CanvasPanel = wxPanel:new(BackgroundPanel, [{style, ?wxBORDER_SUNKEN}, {size, {?CANVAS_WIDTH, ?CANVAS_HEIGHT}}]),
     StartWaveButton = wxButton:new(BackgroundPanel, ?wxID_ANY, [{label, "Start Wave"}]),
     ShootButton = wxButton:new(BackgroundPanel, ?wxID_ANY, [{label, "Shoot"}]),
-    % NEW: Create the "Change Map" button
     ChangeMapButton = wxButton:new(BackgroundPanel, ?wxID_ANY, [{label, "Change Map"}]),
+    ShowFullMapButton = wxButton:new(BackgroundPanel, ?wxID_ANY, [{label, "Show Full Map"}]),
 
 
     %% --- 3. Layout ---
@@ -68,6 +72,7 @@ init() ->
     wxSizer:add(TopRowSizer, WaterButton, [{flag, ?wxLEFT}, {border, 10}]),
     wxSizer:add(TopRowSizer, AvatarButton, [{flag, ?wxLEFT}, {border, 10}]),
     wxSizer:addStretchSpacer(TopRowSizer),
+    wxSizer:add(TopRowSizer, ShowFullMapButton, [{flag, ?wxRIGHT bor ?wxALIGN_CENTER_VERTICAL}, {border, 10}]),
     wxSizer:add(TopRowSizer, ChangeMapButton, [{flag, ?wxRIGHT bor ?wxALIGN_CENTER_VERTICAL}, {border, 10}]),
     wxSizer:add(TopRowSizer, ShootButton, [{flag, ?wxRIGHT bor ?wxALIGN_CENTER_VERTICAL}, {border, 10}]),
     wxSizer:add(TopRowSizer, StartWaveButton, [{flag, ?wxRIGHT bor ?wxALIGN_CENTER_VERTICAL}, {border, 10}]),
@@ -94,6 +99,7 @@ init() ->
     wxButton:connect(StartWaveButton, command_button_clicked),
     wxButton:connect(ShootButton, command_button_clicked),
     wxButton:connect(ChangeMapButton, command_button_clicked),
+    wxButton:connect(ShowFullMapButton, command_button_clicked),
 
     %% --- 5. Start the Loop ---
     wxFrame:show(Frame),
@@ -103,20 +109,74 @@ init() ->
       ground_bitmap => GroundBitmap, fire_bitmap => FireBitmap,
       air_bitmap => AirBitmap, water_bitmap => WaterBitmap,
       avatar_bitmap => AvatarBitmap,
-      map_bitmaps => MapBitmaps, % NEW: Store the list of maps
-      current_map_index => 1,    % NEW: Start with the first map
+      map_bitmaps => MapBitmaps,
+      current_map_index => 1,
       red_balloon_bitmap => RedBalloonBitmap,
       ground_projectile_bitmap => GroundProjectileBitmap,
       fire_projectile_bitmap => FireProjectileBitmap,
       air_projectile_bitmap => AirProjectileBitmap,
       water_projectile_bitmap => WaterProjectileBitmap,
-      current_brush => unselected, stamps => [],
+      current_brush => unselected,
+      stamps => #{1 => [], 2 => [], 3 => [], 4 => []},
       balloons => [], projectiles => []
      },
-    loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, InitialState).
+    loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, ShowFullMapButton, InitialState).
 
 
-loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, State) ->
+%% --- Function to show the combined full map ---
+show_full_map(ParentFrame, GameState) ->
+    % CHANGED: Create the window at 50% of the full map size
+    ScaledWidth = round(?FULL_MAP_WIDTH * ?FULL_MAP_SCALE),
+    ScaledHeight = round(?FULL_MAP_HEIGHT * ?FULL_MAP_SCALE),
+    FullMapFrame = wxFrame:new(ParentFrame, ?wxID_ANY, "Full Map View", [{size, {ScaledWidth, ScaledHeight}}]),
+    FullMapPanel = wxPanel:new(FullMapFrame),
+    wxPanel:connect(FullMapPanel, paint),
+    wxFrame:connect(FullMapFrame, close_window),
+    wxFrame:show(FullMapFrame),
+    full_map_loop(FullMapFrame, FullMapPanel, GameState).
+
+full_map_loop(FullMapFrame, FullMapPanel, GameState) ->
+    receive
+        #'wx'{obj=FullMapFrame, event=#'wxClose'{}} ->
+            wxFrame:destroy(FullMapFrame);
+        #'wx'{obj=FullMapPanel, event=#'wxPaint'{}} ->
+            #{stamps := AllStamps, ground_bitmap := GroundBitmap, fire_bitmap := FireBitmap,
+              air_bitmap := AirBitmap, water_bitmap := WaterBitmap, avatar_bitmap := AvatarBitmap,
+              map_bitmaps := [Map1, Map2, Map3, Map4]} = GameState,
+            DC = wxBufferedPaintDC:new(FullMapPanel),
+            % NEW: Set the drawing scale to 50%. Everything drawn after this will be smaller.
+            wxDC:setUserScale(DC, ?FULL_MAP_SCALE, ?FULL_MAP_SCALE),
+            % Draw the four maps side-by-side using their original coordinates
+            wxDC:drawBitmap(DC, Map1, {0, 0}),
+            wxDC:drawBitmap(DC, Map2, {?CANVAS_WIDTH, 0}),
+            wxDC:drawBitmap(DC, Map3, {?CANVAS_WIDTH * 2, 0}),
+            wxDC:drawBitmap(DC, Map4, {?CANVAS_WIDTH * 3, 0}),
+            % Draw monkeys for each map with the correct offset
+            lists:foreach(
+              fun({MapNum, OffsetX}) ->
+                  StampsForMap = maps:get(MapNum, AllStamps),
+                  lists:foreach(
+                    fun({BrushType, PX, PY}) ->
+                        Bitmap = case BrushType of
+                                     ground_brush -> GroundBitmap; fire_brush -> FireBitmap;
+                                     air_brush -> AirBitmap; water_brush -> WaterBitmap;
+                                     avatar_brush -> AvatarBitmap
+                                 end,
+                        % We use the original coordinates; the DC handles the scaling
+                        wxDC:drawBitmap(DC, Bitmap, {PX + OffsetX, PY}, [{useMask, true}])
+                    end,
+                    StampsForMap)
+              end,
+              [{1, 0}, {2, ?CANVAS_WIDTH}, {3, ?CANVAS_WIDTH * 2}, {4, ?CANVAS_WIDTH * 3}]
+            ),
+            wxBufferedPaintDC:destroy(DC),
+            full_map_loop(FullMapFrame, FullMapPanel, GameState);
+        _Other ->
+            full_map_loop(FullMapFrame, FullMapPanel, GameState)
+    end.
+
+
+loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, ShowFullMapButton, State) ->
     receive
         #'wx'{obj=Frame, event=#'wxClose'{}} ->
             io:format("Closing window.~n"),
@@ -125,23 +185,23 @@ loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, Canv
 
         #'wx'{obj=GroundButton, event=#'wxMouse'{type=left_down}} ->
             NewState = State#{current_brush => ground_brush},
-            loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewState);
+            loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, ShowFullMapButton, NewState);
 
         #'wx'{obj=FireButton, event=#'wxMouse'{type=left_down}} ->
             NewState = State#{current_brush => fire_brush},
-            loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewState);
+            loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, ShowFullMapButton, NewState);
 
         #'wx'{obj=AirButton, event=#'wxMouse'{type=left_down}} ->
             NewState = State#{current_brush => air_brush},
-            loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewState);
+            loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, ShowFullMapButton, NewState);
 
         #'wx'{obj=WaterButton, event=#'wxMouse'{type=left_down}} ->
             NewState = State#{current_brush => water_brush},
-            loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewState);
+            loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, ShowFullMapButton, NewState);
 
         #'wx'{obj=AvatarButton, event=#'wxMouse'{type=left_down}} ->
             NewState = State#{current_brush => avatar_brush},
-            loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewState);
+            loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, ShowFullMapButton, NewState);
 
         #'wx'{obj=StartWaveButton, event=#'wxCommand'{type=command_button_clicked}} ->
             io:format("Starting a new balloon at the start of the path.~n"),
@@ -151,22 +211,21 @@ loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, Canv
             NewState = State#{balloons => NewBalloons},
             if length(OldBalloons) == 0 -> timer:send_after(?TICK_INTERVAL, self(), {tick}); true -> ok end,
             wxWindow:refresh(CanvasPanel),
-            loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewState);
+            loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, ShowFullMapButton, NewState);
 
-        % Handle clicks on the "Shoot" button
         #'wx'{obj=ShootButton, event=#'wxCommand'{type=command_button_clicked}} ->
             io:format("All monkeys are shooting...~n"),
-            #{projectiles := Projectiles, balloons := Balloons, path := Path, stamps := Stamps} = State,
-            if (length(Stamps) > 0) and (length(Balloons) > 0) ->
+            #{projectiles := Projectiles, balloons := Balloons, path := Path,
+              stamps := AllStamps, current_map_index := MapIndex} = State,
+            CurrentMapStamps = maps:get(MapIndex, AllStamps),
+            if (length(CurrentMapStamps) > 0) and (length(Balloons) > 0) ->
                 [TargetBalloon | _] = Balloons,
                 NewProjectiles = lists:map(
                                    fun({MonkeyType, MonkeyX, MonkeyY}) ->
                                        DartPath = game_logic:calculate_dart_path({MonkeyX, MonkeyY}, TargetBalloon, Path),
                                        DartType = case MonkeyType of
-                                                      ground_brush -> ground_dart;
-                                                      fire_brush -> fire_dart;
-                                                      air_brush -> air_dart;
-                                                      water_brush -> water_dart;
+                                                      ground_brush -> ground_dart; fire_brush -> fire_dart;
+                                                      air_brush -> air_dart; water_brush -> water_dart;
                                                       avatar_brush ->
                                                           case rand:uniform(4) of
                                                               1 -> ground_dart; 2 -> fire_dart;
@@ -175,24 +234,29 @@ loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, Canv
                                                   end,
                                        #{type => DartType, path => DartPath, path_index => 1}
                                    end,
-                                   Stamps),
+                                   CurrentMapStamps),
                 AllProjectiles = NewProjectiles ++ Projectiles,
                 NewState = State#{projectiles => AllProjectiles},
                 wxWindow:refresh(CanvasPanel),
-                loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewState);
+                loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, ShowFullMapButton, NewState);
             true ->
                 io:format("Need at least one monkey and one balloon to shoot.~n"),
-                loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, State)
+                loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, ShowFullMapButton, State)
             end;
 
-        % NEW: Handle clicks on the "Change Map" button
         #'wx'{obj=ChangeMapButton, event=#'wxCommand'{type=command_button_clicked}} ->
             #{current_map_index := CurrentIndex, map_bitmaps := Maps} = State,
             NewIndex = (CurrentIndex rem length(Maps)) + 1,
             io:format("Changing to map #~p~n", [NewIndex]),
             NewState = State#{current_map_index => NewIndex},
             wxWindow:refresh(CanvasPanel),
-            loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewState);
+            loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, ShowFullMapButton, NewState);
+
+        #'wx'{obj=ShowFullMapButton, event=#'wxCommand'{type=command_button_clicked}} ->
+            io:format("Showing full map...~n"),
+            show_full_map(Frame, State),
+            loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, ShowFullMapButton, State);
+
 
         {tick} ->
             #{balloons := Balloons, projectiles := Projectiles, path := Path} = State,
@@ -220,23 +284,26 @@ loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, Canv
                true ->
                 ok
             end,
-            loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewState);
+            loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, ShowFullMapButton, NewState);
 
         #'wx'{obj=CanvasPanel, event=#'wxMouse'{type=left_down, x=X, y=Y}} ->
-            #{current_brush := BrushType, stamps := Stamps} = State,
+            #{current_brush := BrushType, stamps := AllStamps, current_map_index := MapIndex} = State,
             case BrushType of
                 unselected ->
                     io:format("Clicked on map at coordinates: {~p, ~p}~n", [X, Y]),
-                    loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, State);
+                    loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, ShowFullMapButton, State);
                 _ ->
                     StampX = X - (?BUTTON_WIDTH div 2), StampY = Y - (?BUTTON_HEIGHT div 2),
-                    NewState = State#{stamps => [{BrushType, StampX, StampY} | Stamps], current_brush => unselected},
+                    CurrentMapStamps = maps:get(MapIndex, AllStamps),
+                    NewMapStamps = [{BrushType, StampX, StampY} | CurrentMapStamps],
+                    UpdatedAllStamps = AllStamps#{MapIndex => NewMapStamps},
+                    NewState = State#{stamps => UpdatedAllStamps, current_brush => unselected},
                     wxWindow:refresh(CanvasPanel),
-                    loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewState)
+                    loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, ShowFullMapButton, NewState)
             end;
 
         #'wx'{obj=CanvasPanel, event=#'wxPaint'{}} ->
-            #{stamps := Stamps, balloons := Balloons, projectiles := Projectiles,
+            #{stamps := AllStamps, balloons := Balloons, projectiles := Projectiles,
               ground_bitmap := GroundBitmap, fire_bitmap := FireBitmap, air_bitmap := AirBitmap, water_bitmap := WaterBitmap,
               avatar_bitmap := AvatarBitmap, map_bitmaps := MapBitmaps, current_map_index := MapIndex,
               red_balloon_bitmap := RedBalloonBitmap,
@@ -244,9 +311,9 @@ loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, Canv
               air_projectile_bitmap := AirProjectileBitmap, water_projectile_bitmap := WaterProjectileBitmap,
               path := Path} = State,
             DC = wxBufferedPaintDC:new(CanvasPanel),
-            % NEW: Select the current map from the list and draw it
             CurrentMapBitmap = lists:nth(MapIndex, MapBitmaps),
             wxDC:drawBitmap(DC, CurrentMapBitmap, {0, 0}),
+            CurrentMapStamps = maps:get(MapIndex, AllStamps),
             lists:foreach(fun({BrushType, PX, PY}) ->
                                   Bitmap = case BrushType of
                                                ground_brush -> GroundBitmap; fire_brush -> FireBitmap;
@@ -254,7 +321,7 @@ loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, Canv
                                                avatar_brush -> AvatarBitmap
                                            end,
                                   wxDC:drawBitmap(DC, Bitmap, {PX, PY}, [{useMask, true}])
-                          end, lists:reverse(Stamps)),
+                          end, lists:reverse(CurrentMapStamps)),
             lists:foreach(
               fun(Balloon) ->
                   PathIndex = maps:get(path_index, Balloon),
@@ -275,8 +342,8 @@ loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, Canv
               end,
               lists:reverse(Projectiles)),
             wxBufferedPaintDC:destroy(DC),
-            loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, State);
+            loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, ShowFullMapButton, State);
 
         _Other ->
-            loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, State)
+            loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, ShowFullMapButton, State)
     end.
