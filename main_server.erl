@@ -22,6 +22,9 @@ move_balloon(I,NP) -> gui:move_balloon(I,NP).
 delete_balloon(I) -> gui:delete_balloon(I).
 
 %% Internal Helper Functions
+get_dart_type(avatar_monkey) ->
+    Darts = [ground_dart, water_dart, fire_dart, air_dart],
+    lists:nth(rand:uniform(length(Darts)), Darts);
 get_dart_type(ground_monkey) -> ground_dart;
 get_dart_type(water_monkey) -> water_dart;
 get_dart_type(fire_monkey) -> fire_dart;
