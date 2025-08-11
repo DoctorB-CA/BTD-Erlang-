@@ -1,5 +1,4 @@
-%%% w.erl
-%%% Passive GUI: registers to main_server; sends actions; renders {render, Snapshot}.
+%%% w.erl — passive renderer talking to main_server
 
 -module(w).
 -export([start/0, init/0]).
@@ -23,7 +22,6 @@
 
 start() -> spawn(fun ?MODULE:init/0).
 
-%% Allow running main_server on another node: export BTD_MAIN_NODE
 get_main_node() ->
     case os:getenv("BTD_MAIN_NODE") of false -> node(); Str -> list_to_atom(Str) end.
 
@@ -40,13 +38,11 @@ from_world({WX, WY}) ->
     Ypx = round((WY / ?WORLD_TOTAL_W) * ?CANVAS_HEIGHT),
     {MapIdx, {Xpx, Ypx}}.
 
-%% Try to get a full path from p:get_path/0; fall back to a straight line
 get_full_path() ->
     try p:get_path() of L when is_list(L) -> L
     catch _:_ -> [ {X, 300} || X <- lists:seq(10, ?CANVAS_WIDTH * ?WORLD_MAPS - 10, 10) ] end.
 
 to_world_full_list(PixelsList) ->
-    %% MapIdx spans 1..4 in GUI coords: assume the list is already global pixels across 4 maps
     lists:map(
       fun({Xpx, Ypx}) ->
           WX = round((Xpx / (?CANVAS_WIDTH * ?WORLD_MAPS)) * ?WORLD_TOTAL_W),
@@ -59,28 +55,31 @@ init() ->
 
     Images = "/home/csestudent/Desktop/bar/images/",
     GndBmp = wxBitmap:new(wxImage:scale(wxImage:new(Images ++ "ground_monkey.png"), ?BUTTON_WIDTH, ?BUTTON_HEIGHT)),
-    FireBmp = wxBitmap:new(wxImage:scale(wxImage:new(Images ++ "fire_monkey.png"), ?BUTTON_WIDTH, ?BUTTON_HEIGHT)),
-    WatBmp = wxBitmap:new(wxImage:scale(wxImage:new(Images ++ "water_mnkey.png"), ?BUTTON_WIDTH, ?BUTTON_HEIGHT)),
-    AvaBmp = wxBitmap:new(wxImage:scale(wxImage:new(Images ++ "avater_monkey.png"), ?BUTTON_WIDTH, ?BUTTON_HEIGHT)),
+    FireBmp = wxBitmap:new(wxImage:scale(wxImage:new(Images ++ "fire_monkey.png"),   ?BUTTON_WIDTH, ?BUTTON_HEIGHT)),
+    WatBmp = wxBitmap:new(wxImage:scale(wxImage:new(Images ++ "water_mnkey.png"),   ?BUTTON_WIDTH, ?BUTTON_HEIGHT)), %% (filename you gave)
+    AirBmp = wxBitmap:new(wxImage:scale(wxImage:new(Images ++ "air_monkey.png"),     ?BUTTON_WIDTH, ?BUTTON_HEIGHT)),
+    AvaBmp = wxBitmap:new(wxImage:scale(wxImage:new(Images ++ "avater_monkey.png"),  ?BUTTON_WIDTH, ?BUTTON_HEIGHT)), %% (filename you gave)
+
     Maps = [
       wxBitmap:new(wxImage:scale(wxImage:new(Images ++ "map1.png"), ?CANVAS_WIDTH, ?CANVAS_HEIGHT)),
       wxBitmap:new(wxImage:scale(wxImage:new(Images ++ "map2.png"), ?CANVAS_WIDTH, ?CANVAS_HEIGHT)),
       wxBitmap:new(wxImage:scale(wxImage:new(Images ++ "map3.png"), ?CANVAS_WIDTH, ?CANVAS_HEIGHT)),
       wxBitmap:new(wxImage:scale(wxImage:new(Images ++ "map4.png"), ?CANVAS_WIDTH, ?CANVAS_HEIGHT))
     ],
+
     RedB   = wxBitmap:new(wxImage:scale(wxImage:new(Images ++ "red_balloon.png"),   ?BALLOON_W, ?BALLOON_H)),
     BlueB  = wxBitmap:new(wxImage:scale(wxImage:new(Images ++ "blue_balloon.png"),  ?BALLOON_W, ?BALLOON_H)),
     GreenB = wxBitmap:new(wxImage:scale(wxImage:new(Images ++ "green_balloon.png"), ?BALLOON_W, ?BALLOON_H)),
     BlackB = wxBitmap:new(wxImage:scale(wxImage:new(Images ++ "black_balloon.png"), ?BALLOON_W, ?BALLOON_H)),
+
     GDart  = wxBitmap:new(wxImage:scale(wxImage:new(Images ++ "ground_dart.png"), ?DART_W, ?DART_H)),
     FDart  = wxBitmap:new(wxImage:scale(wxImage:new(Images ++ "fire_dart.png"),   ?DART_W, ?DART_H)),
     WDart  = wxBitmap:new(wxImage:scale(wxImage:new(Images ++ "water_dart.png"),  ?DART_W, ?DART_H)),
     ADart  = wxBitmap:new(wxImage:scale(wxImage:new(Images ++ "air_dart.png"),    ?DART_W, ?DART_H)),
 
-    %% initial GUI state (snapshot empty; we only draw on render messages)
     State0 = #{
       map_bitmaps => Maps,
-      ground_bmp => GndBmp, fire_bmp => FireBmp, water_bmp => WatBmp, avatar_bmp => AvaBmp,
+      ground_bmp => GndBmp, fire_bmp => FireBmp, water_bmp => WatBmp, air_bmp => AirBmp, avatar_bmp => AvaBmp,
       red_bmp => RedB, blue_bmp => BlueB, green_bmp => GreenB, black_bmp => BlackB,
       gdart => GDart, fdart => FDart, wdart => WDart, adart => ADart,
       current_map => 1,
@@ -89,24 +88,26 @@ init() ->
       full_path_pixels => get_full_path()
     },
 
-    %% Build UI
     Frame = wxFrame:new(wx:null(), ?wxID_ANY, "BTD (GUI renderer)"),
     Panel = wxPanel:new(Frame),
     wxPanel:setBackgroundColour(Panel, {255,255,255}),
 
-    GB = wxStaticBitmap:new(Panel, ?wxID_ANY, GndBmp),
-    FB = wxStaticBitmap:new(Panel, ?wxID_ANY, FireBmp),
-    WB = wxStaticBitmap:new(Panel, ?wxID_ANY, WatBmp),
-    AB = wxStaticBitmap:new(Panel, ?wxID_ANY, AvaBmp),
+    GndB = wxStaticBitmap:new(Panel, ?wxID_ANY, GndBmp),
+    FireB = wxStaticBitmap:new(Panel, ?wxID_ANY, FireBmp),
+    WatB = wxStaticBitmap:new(Panel, ?wxID_ANY, WatBmp),
+    AirB = wxStaticBitmap:new(Panel, ?wxID_ANY, AirBmp),
+    AvaB = wxStaticBitmap:new(Panel, ?wxID_ANY, AvaBmp),
+
     Canvas = wxPanel:new(Panel, [{style, ?wxBORDER_SUNKEN}, {size, {?CANVAS_WIDTH, ?CANVAS_HEIGHT}}]),
     StartWaveBtn = wxButton:new(Panel, ?wxID_ANY, [{label, "Start Wave"}]),
     ChangeMapBtn = wxButton:new(Panel, ?wxID_ANY, [{label, "Change Map"}]),
 
     Top = wxBoxSizer:new(?wxHORIZONTAL),
-    wxSizer:add(Top, GB, [{flag, ?wxLEFT}, {border, 8}]),
-    wxSizer:add(Top, FB, [{flag, ?wxLEFT}, {border, 8}]),
-    wxSizer:add(Top, WB, [{flag, ?wxLEFT}, {border, 8}]),
-    wxSizer:add(Top, AB, [{flag, ?wxLEFT}, {border, 8}]),
+    wxSizer:add(Top, GndB, [{flag, ?wxLEFT}, {border, 8}]),
+    wxSizer:add(Top, FireB, [{flag, ?wxLEFT}, {border, 8}]),
+    wxSizer:add(Top, WatB, [{flag, ?wxLEFT}, {border, 8}]),
+    wxSizer:add(Top, AirB, [{flag, ?wxLEFT}, {border, 8}]),
+    wxSizer:add(Top, AvaB, [{flag, ?wxLEFT}, {border, 8}]),
     wxSizer:addStretchSpacer(Top),
     wxSizer:add(Top, ChangeMapBtn, [{flag, ?wxRIGHT bor ?wxALIGN_CENTER_VERTICAL}, {border, 8}]),
     wxSizer:add(Top, StartWaveBtn, [{flag, ?wxRIGHT bor ?wxALIGN_CENTER_VERTICAL}, {border, 8}]),
@@ -119,10 +120,12 @@ init() ->
     wxFrame:setSize(Frame, {?WINDOW_WIDTH, ?WINDOW_HEIGHT}),
 
     wxFrame:connect(Frame, close_window),
-    wxStaticBitmap:connect(GB, left_down),
-    wxStaticBitmap:connect(FB, left_down),
-    wxStaticBitmap:connect(WB, left_down),
-    wxStaticBitmap:connect(AB, left_down),
+    wxStaticBitmap:connect(GndB, left_down),
+    wxStaticBitmap:connect(FireB, left_down),
+    wxStaticBitmap:connect(WatB, left_down),
+    wxStaticBitmap:connect(AirB, left_down),
+    wxStaticBitmap:connect(AvaB, left_down),
+
     wxPanel:connect(Canvas, left_down),
     wxPanel:connect(Canvas, paint),
     wxButton:connect(StartWaveBtn, command_button_clicked),
@@ -130,41 +133,42 @@ init() ->
 
     wxFrame:show(Frame),
 
-    %% Register to main_server
     gen_server:cast({main_server, get_main_node()}, {register_gui, self()}),
 
-    loop(Frame, Canvas, GB, FB, WB, AB, StartWaveBtn, ChangeMapBtn, State0).
+    loop(Frame, Canvas, GndB, FireB, WatB, AirB, AvaB, StartWaveBtn, ChangeMapBtn, State0).
 
-loop(Frame, Canvas, GB, FB, WB, AB, StartWaveBtn, ChangeMapBtn, State) ->
+loop(Frame, Canvas, GndB, FireB, WatB, AirB, AvaB, StartWaveBtn, ChangeMapBtn, State) ->
     receive
         {render, Snapshot} ->
             NewState = State#{snapshot => Snapshot},
             wxWindow:refresh(Canvas),
-            loop(Frame, Canvas, GB, FB, WB, AB, StartWaveBtn, ChangeMapBtn, NewState);
+            loop(Frame, Canvas, GndB, FireB, WatB, AirB, AvaB, StartWaveBtn, ChangeMapBtn, NewState);
 
         #'wx'{obj=Frame, event=#'wxClose'{}} ->
             wxFrame:destroy(Frame), exit(normal);
 
-        %% brush selects
-        #'wx'{obj=GB, event=#'wxMouse'{type=left_down}} ->
-            loop(Frame, Canvas, GB, FB, WB, AB, StartWaveBtn, ChangeMapBtn, State#{current_brush => ground_monkey});
-        #'wx'{obj=FB, event=#'wxMouse'{type=left_down}} ->
-            loop(Frame, Canvas, GB, FB, WB, AB, StartWaveBtn, ChangeMapBtn, State#{current_brush => fire_monkey});
-        #'wx'{obj=WB, event=#'wxMouse'{type=left_down}} ->
-            loop(Frame, Canvas, GB, FB, WB, AB, StartWaveBtn, ChangeMapBtn, State#{current_brush => water_monkey});
-        #'wx'{obj=AB, event=#'wxMouse'{type=left_down}} ->
-            loop(Frame, Canvas, GB, FB, WB, AB, StartWaveBtn, ChangeMapBtn, State#{current_brush => avatar_monkey});
+        %% brushes
+        #'wx'{obj=GndB, event=#'wxMouse'{type=left_down}} ->
+            loop(Frame, Canvas, GndB, FireB, WatB, AirB, AvaB, StartWaveBtn, ChangeMapBtn, State#{current_brush => ground_monkey});
+        #'wx'{obj=FireB, event=#'wxMouse'{type=left_down}} ->
+            loop(Frame, Canvas, GndB, FireB, WatB, AirB, AvaB, StartWaveBtn, ChangeMapBtn, State#{current_brush => fire_monkey});
+        #'wx'{obj=WatB, event=#'wxMouse'{type=left_down}} ->
+            loop(Frame, Canvas, GndB, FireB, WatB, AirB, AvaB, StartWaveBtn, ChangeMapBtn, State#{current_brush => water_monkey});
+        #'wx'{obj=AirB, event=#'wxMouse'{type=left_down}} ->
+            loop(Frame, Canvas, GndB, FireB, WatB, AirB, AvaB, StartWaveBtn, ChangeMapBtn, State#{current_brush => air_monkey});
+        #'wx'{obj=AvaB, event=#'wxMouse'{type=left_down}} ->
+            loop(Frame, Canvas, GndB, FireB, WatB, AirB, AvaB, StartWaveBtn, ChangeMapBtn, State#{current_brush => avatar_monkey});
 
         %% place monkey
         #'wx'{obj=Canvas, event=#'wxMouse'{type=left_down, x=X, y=Y}} ->
             #{current_brush := Brush, current_map := MapIdx} = State,
             case Brush of
                 unselected ->
-                    loop(Frame, Canvas, GB, FB, WB, AB, StartWaveBtn, ChangeMapBtn, State);
+                    loop(Frame, Canvas, GndB, FireB, WatB, AirB, AvaB, StartWaveBtn, ChangeMapBtn, State);
                 _ ->
                     WorldPos = to_world(MapIdx, {X, Y}),
                     gen_server:cast({main_server, get_main_node()}, {add_monkey, WorldPos, 60, Brush}),
-                    loop(Frame, Canvas, GB, FB, WB, AB, StartWaveBtn, ChangeMapBtn, State#{current_brush => unselected})
+                    loop(Frame, Canvas, GndB, FireB, WatB, AirB, AvaB, StartWaveBtn, ChangeMapBtn, State#{current_brush => unselected})
             end;
 
         %% buttons
@@ -172,20 +176,21 @@ loop(Frame, Canvas, GB, FB, WB, AB, StartWaveBtn, ChangeMapBtn, State) ->
             FullPixels = maps:get(full_path_pixels, State),
             WorldPath  = to_world_full_list(FullPixels),
             gen_server:cast({main_server, get_main_node()}, {start_wave, level_1, WorldPath}),
-            loop(Frame, Canvas, GB, FB, WB, AB, StartWaveBtn, ChangeMapBtn, State);
+            loop(Frame, Canvas, GndB, FireB, WatB, AirB, AvaB, StartWaveBtn, ChangeMapBtn, State);
+
         #'wx'{obj=ChangeMapBtn, event=#'wxCommand'{type=command_button_clicked}} ->
             Cur = maps:get(current_map, State),
             NewState = State#{current_map => (Cur rem 4) + 1},
             wxWindow:refresh(Canvas),
-            loop(Frame, Canvas, GB, FB, WB, AB, StartWaveBtn, ChangeMapBtn, NewState);
+            loop(Frame, Canvas, GndB, FireB, WatB, AirB, AvaB, StartWaveBtn, ChangeMapBtn, NewState);
 
         %% paint
         #'wx'{obj=Canvas, event=#'wxPaint'{}} ->
             draw(Canvas, State),
-            loop(Frame, Canvas, GB, FB, WB, AB, StartWaveBtn, ChangeMapBtn, State);
+            loop(Frame, Canvas, GndB, FireB, WatB, AirB, AvaB, StartWaveBtn, ChangeMapBtn, State);
 
         _Other ->
-            loop(Frame, Canvas, GB, FB, WB, AB, StartWaveBtn, ChangeMapBtn, State)
+            loop(Frame, Canvas, GndB, FireB, WatB, AirB, AvaB, StartWaveBtn, ChangeMapBtn, State)
     end.
 
 draw(Canvas, State) ->
@@ -196,7 +201,7 @@ draw(Canvas, State) ->
     wxDC:drawBitmap(DC, CurrentMap, {0,0}),
     Snap = maps:get(snapshot, State),
 
-    %% Draw monkeys
+    %% Monkeys
     lists:foreach(fun(M) ->
         {MapIdx, {Xpx, Ypx}} = from_world(maps:get(pos, M)),
         case MapIdx =:= Cur of
@@ -205,15 +210,16 @@ draw(Canvas, State) ->
                         ground_monkey -> maps:get(ground_bmp, State);
                         fire_monkey   -> maps:get(fire_bmp, State);
                         water_monkey  -> maps:get(water_bmp, State);
+                        air_monkey    -> maps:get(air_bmp, State);
                         avatar_monkey -> maps:get(avatar_bmp, State);
-                        _ -> maps:get(ground_bmp, State)
+                        _             -> maps:get(ground_bmp, State)
                       end,
                 wxDC:drawBitmap(DC, Bmp, {Xpx - (?BUTTON_WIDTH div 2), Ypx - (?BUTTON_HEIGHT div 2)}, [{useMask,true}]);
             false -> ok
         end
     end, maps:get(monkeys, Snap, [])),
 
-    %% Draw bloons
+    %% Bloons
     lists:foreach(fun(B) ->
         {MapIdx, {Xpx, Ypx}} = from_world(maps:get(pos, B)),
         case MapIdx =:= Cur of
@@ -229,7 +235,7 @@ draw(Canvas, State) ->
         end
     end, maps:get(bloons, Snap, [])),
 
-    %% Draw darts
+    %% Darts
     lists:foreach(fun(D) ->
         {MapIdx, {Xpx, Ypx}} = from_world(maps:get(pos, D)),
         case MapIdx =:= Cur of
