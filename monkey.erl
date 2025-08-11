@@ -40,8 +40,10 @@ searching(state_timeout, scan, Data = #data{pos=MyPos, region_pid=Reg, range=R})
 attacking(state_timeout, cooldown_over, Data) ->
     {next_state, searching, Data, {state_timeout, 0, scan}}.
 
+%% >>> Add air_monkey here <<<
 arrow_type_for(ground_monkey) -> ground;
 arrow_type_for(fire_monkey)   -> fire;
 arrow_type_for(water_monkey)  -> water;
+arrow_type_for(air_monkey)    -> air;
 arrow_type_for(avatar_monkey) ->
     case rand:uniform(4) of 1 -> ground; 2 -> fire; 3 -> water; 4 -> air end.
