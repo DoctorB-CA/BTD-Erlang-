@@ -4,7 +4,7 @@
 -export([start_link/4, start_remotely/4, get_pos/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
--define(SPEED, 2000). 
+-define(SPEED, 2000).
 -define(REGION_WIDTH, 50).
 
 -record(state, {path, path_index = 1, health, pos, current_region_pid, region_servers}).
@@ -33,11 +33,9 @@ handle_call(_Req, _From, State) ->
 
 handle_info({hit, Damage}, State) ->
     NewHealth = State#state.health - Damage,
-    % --- PRINT STATEMENT FOR HITS ---
     io:format("Bloon at ~p HIT! Health: ~p -> ~p~n", [State#state.pos, State#state.health, NewHealth]),
     if
         NewHealth =< 0 ->
-            % --- PRINT STATEMENT FOR BLOON POPPING ---
             io:format("~n*** BLOON POPPED at position ~p! ***~n~n", [State#state.pos]),
             {stop, normal, State};
         true ->
@@ -66,7 +64,6 @@ handle_region_crossing({OldX, _}, NewPos = {NewX, _}, BloonPid, _State = #state{
     NewRegionIndex = trunc(NewX / ?REGION_WIDTH),
     if
         OldRegionIndex /= NewRegionIndex ->
-            % --- PRINT STATEMENT FOR CROSSING REGIONS ---
             io:format("--- Bloon ~p CROSSING from region ~p to ~p ---~n", [BloonPid, OldRegionIndex, NewRegionIndex]),
             NewRegionPid = lists:nth(NewRegionIndex + 1, AllPids),
             gen_server:cast(CurrentPid, {remove_bloon, BloonPid}),

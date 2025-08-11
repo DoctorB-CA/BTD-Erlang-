@@ -1,7 +1,7 @@
 -module(main_server).
 -behaviour(gen_server).
 
--export([start_link/1, add_monkey/2, add_bloon/2]).
+-export([start_link/1, add_monkey/2, add_bloon/2, get_regions/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -define(MAP_WIDTH, 200).
@@ -18,6 +18,9 @@ add_monkey(Pos, Range) ->
 
 add_bloon(Path, Health) ->
     gen_server:cast(?MODULE, {add_bloon, Path, Health}).
+
+get_regions() ->
+    gen_server:call(?MODULE, get_regions).
 
 init([RegionNodes]) ->
     io:format("Main Server is starting...~n"),
@@ -36,6 +39,7 @@ init([RegionNodes]) ->
     io:format("Main Server: All start requests sent.~n"),
     {ok, #state{regions = RegionInfo}}.
 
+handle_call(get_regions, _From, State) -> {reply, State#state.regions, State};
 handle_call(_Request, _From, State) -> {reply, ok, State}.
 
 handle_cast({add_monkey, Pos = {X, _Y}, Range}, State) ->
@@ -47,11 +51,8 @@ handle_cast({add_monkey, Pos = {X, _Y}, Range}, State) ->
 
 handle_cast({add_bloon, Path = [{X, _Y} | _], Health}, State) ->
     RegionIndex = trunc(X / ?REGION_WIDTH),
-    % FIX: Get the Node for the bloon's starting region
     {Node, RegionPid} = lists:nth(RegionIndex + 1, State#state.regions),
-    % Get a list of all region PIDs for the bloon to know about
     AllRegionPids = [Pid || {_N, Pid} <- State#state.regions],
-    % FIX: Use rpc to start the bloon on the correct remote node
     io:format("Main Server: Requesting node ~p to start a bloon...~n", [Node]),
     rpc:call(Node, bloon, start_remotely, [Path, Health, RegionPid, AllRegionPids]),
     {noreply, State}.

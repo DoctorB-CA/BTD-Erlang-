@@ -1,22 +1,10 @@
 -module(game).
 -export([start/0, compile_all/0]).
 
-% @doc
-% Compiles and loads all the source files for the game.
 compile_all() ->
     io:format("Compiling all game files...~n"),
     application:ensure_all_started(compiler),
-
-    % The order matters. Compile modules before they are used.
-    Modules = [
-        w,
-        region_server,
-        bloon,
-        arrow,
-        monkey,
-        main_server
-    ],
-
+    Modules = [w, region_server, bloon, arrow, monkey, main_server],
     lists:foreach(
         fun(Module) ->
             File = atom_to_list(Module) ++ ".erl",
@@ -35,9 +23,12 @@ compile_all() ->
     ),
     io:format("All modules compiled and loaded.~n").
 
-% @doc
-% Starts the game by compiling and then starting the main_server.
 start() ->
     compile_all(),
-    io:format("Starting the main server...~n"),
-    main_server:start_link().
+    io:format("Starting the main server on workers...~n"),
+    main_server:start_link([
+        'worker1@119-lnx-20',
+        'worker2@119-lnx-20',
+        'worker3@119-lnx-20',
+        'worker4@119-lnx-20'
+    ]).

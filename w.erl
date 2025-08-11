@@ -1,6 +1,6 @@
 -module(w).
 -export([start/0, init/0]).
--export([start_full_map_window/3]). % Export new function
+-export([start_full_map_window/3]).
 -include_lib("wx/include/wx.hrl").
 
 -define(WINDOW_WIDTH, 1000).
@@ -18,15 +18,54 @@
 -define(FULL_MAP_HEIGHT, ?CANVAS_HEIGHT).
 -define(FULL_MAP_SCALE, 0.5).
 
+%% World/grid constants for backend interop
+-define(WORLD_TOTAL_W, 200).
+-define(WORLD_MAPS, 4).
+-define(WORLD_REGION_W, ?WORLD_TOTAL_W div ?WORLD_MAPS).
+
+%% Source sprites are 32x32
+-define(MONKEY_SCALE, 2).     %% 32 -> 64 px
+-define(MAP_TILE_SCALE, 3).   %% 32 -> 96 px (map tiles very scaled up)
+-define(TILE_SRC, 32).
+-define(TILE_PX, ?TILE_SRC * ?MAP_TILE_SCALE).
+-define(MONKEY_PX, ?TILE_SRC * ?MONKEY_SCALE).
+
 start() ->
     spawn(fun ?MODULE:init/0).
 
+%% Discover main node (optional; defaults to local)
+get_main_node() ->
+    case os:getenv("BTD_MAIN_NODE") of
+        false -> node();
+        Str   -> list_to_atom(Str)
+    end.
+
+%% Pixel→world for a SINGLE region canvas (given current map index 1..4)
+to_world(MapIdx, {Xpx, Ypx}) ->
+    WXlocal = round((Xpx / ?CANVAS_WIDTH) * ?WORLD_REGION_W),
+    WX = WXlocal + (MapIdx - 1) * ?WORLD_REGION_W,
+    WY = round((Ypx / ?CANVAS_HEIGHT) * ?WORLD_TOTAL_W),
+    {WX, WY}.
+
+%% Pixel→world for the FULL-MAP window (global path)
+to_world_full({Xpx, Ypx}) ->
+    WX = round((Xpx / ?FULL_MAP_WIDTH) * ?WORLD_TOTAL_W),
+    WY = round((Ypx / ?FULL_MAP_HEIGHT) * ?WORLD_TOTAL_W),
+    {WX, WY}.
+
+%% World→pixel; returns {MapIdx, {Xpx, Ypx}} for single-region canvases
+from_world({WX, WY}) ->
+    MapIdx = (WX div ?WORLD_REGION_W) + 1,
+    WXlocal = WX rem ?WORLD_REGION_W,
+    Xpx = round((WXlocal / ?WORLD_REGION_W) * ?CANVAS_WIDTH),
+    Ypx = round((WY / ?WORLD_TOTAL_W) * ?CANVAS_HEIGHT),
+    {MapIdx, {Xpx, Ypx}}.
+
 init() ->
-    % This process will become the main game window
     wx:new(),
     wxImage:initStandardHandlers(),
 
-    %% --- 1. Load all Bitmaps once ---
+    %% Load bitmaps
     ImagesPath = "/home/csestudent/Desktop/bar/images/",
     GroundBitmap = wxBitmap:new(wxImage:scale(wxImage:new(ImagesPath ++ "ground_monkey.png"), ?BUTTON_WIDTH, ?BUTTON_HEIGHT)),
     FireBitmap = wxBitmap:new(wxImage:scale(wxImage:new(ImagesPath ++ "fire_monkey.png"), ?BUTTON_WIDTH, ?BUTTON_HEIGHT)),
@@ -45,7 +84,7 @@ init() ->
     AirProjectileBitmap = wxBitmap:new(wxImage:scale(wxImage:new(ImagesPath ++ "air_dart.png"), ?DART_WIDTH, ?DART_HEIGHT)),
     WaterProjectileBitmap = wxBitmap:new(wxImage:scale(wxImage:new(ImagesPath ++ "water_dart.png"), ?DART_WIDTH, ?DART_HEIGHT)),
 
-    %% --- 2. Create Initial State ---
+    %% Initial State (add live_balloons bucket)
     Path = p:get_path(),
     InitialState = #{
         path => Path,
@@ -62,14 +101,16 @@ init() ->
         current_brush => unselected,
         stamps => #{1 => [], 2 => [], 3 => [], 4 => []},
         balloons => #{1 => [], 2 => [], 3 => [], 4 => []},
-        projectiles => #{1 => [], 2 => [], 3 => [], 4 => []}
+        projectiles => #{1 => [], 2 => [], 3 => [], 4 => []},
+        live_balloons => #{1 => [], 2 => [], 3 => [], 4 => []}
     },
 
-    %% --- 3. Spawn the separate Full Map Window process ---
+    %% Spawn Full Map window (separate process) and subscribe to regions
     Env = wx:get_env(),
     spawn(?MODULE, start_full_map_window, [self(), Env, InitialState]),
+    try_subscribe_to_regions(),
 
-    %% --- 4. This process now builds the Main Game Window ---
+    %% Build main window
     register(main_game_gui, self()),
     Frame = wxFrame:new(wx:null(), ?wxID_ANY, "Monkey Game"),
     BackgroundPanel = wxPanel:new(Frame),
@@ -120,7 +161,15 @@ init() ->
     wxFrame:show(Frame),
     main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, InitialState).
 
-%% --- This function runs in its own process to manage the Full Map window ---
+try_subscribe_to_regions() ->
+    MainNode = get_main_node(),
+    case rpc:call(MainNode, main_server, get_regions, []) of
+        {badrpc, _} -> ok;
+        Regions when is_list(Regions) ->
+            lists:foreach(fun({_Node, RegPid}) -> catch gen_server:call(RegPid, {subscribe_ui, self()}) end, Regions)
+    end.
+
+%% Full Map window process
 start_full_map_window(MainGuiPid, Env, InitialState) ->
     wx:set_env(Env),
     register(full_map_gui, self()),
@@ -163,7 +212,8 @@ full_map_loop(FullMapFrame, FullMapCanvas, FullMapButton, GameState) ->
               map_bitmaps := [Map1, Map2, Map3, Map4], path := Path,
               red_balloon_bitmap := RedBalloonBitmap, ground_projectile_bitmap := GroundProjectileBitmap,
               fire_projectile_bitmap := FireProjectileBitmap, air_projectile_bitmap := AirProjectileBitmap,
-              water_projectile_bitmap := WaterProjectileBitmap} = GameState,
+              water_projectile_bitmap := WaterProjectileBitmap,
+              live_balloons := LiveB} = GameState,
             DC = wxBufferedPaintDC:new(FullMapCanvas),
             wxDC:setUserScale(DC, ?FULL_MAP_SCALE, ?FULL_MAP_SCALE),
             wxDC:drawBitmap(DC, Map1, {0, 0}),
@@ -175,6 +225,7 @@ full_map_loop(FullMapFrame, FullMapCanvas, FullMapButton, GameState) ->
                     StampsForMap = maps:get(MapNum, AllStamps),
                     BalloonsForMap = maps:get(MapNum, AllBalloons),
                     ProjectilesForMap = maps:get(MapNum, AllProjectiles),
+                    LiveForMap = maps:get(MapNum, LiveB),
                     lists:foreach(
                         fun({BrushType, PX, PY}) ->
                             Bitmap = case BrushType of
@@ -190,6 +241,10 @@ full_map_loop(FullMapFrame, FullMapCanvas, FullMapButton, GameState) ->
                             {BX, BY} = lists:nth(PathIndex, Path),
                             wxDC:drawBitmap(DC, RedBalloonBitmap, {BX + OffsetX, BY}, [{useMask, true}])
                         end, BalloonsForMap),
+                    lists:foreach(
+                        fun({_Pid, {BX, BY}}) ->
+                            wxDC:drawBitmap(DC, RedBalloonBitmap, {BX + OffsetX, BY}, [{useMask, true}])
+                        end, LiveForMap),
                     lists:foreach(
                         fun(Projectile) ->
                             PathIndex = maps:get(path_index, Projectile),
@@ -211,6 +266,43 @@ full_map_loop(FullMapFrame, FullMapCanvas, FullMapButton, GameState) ->
 
 main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, State) ->
     receive
+        %% Live backend updates from region servers
+        {ui, {bloon_added, Pid, WorldPos}} ->
+            {MapIdx, PosPx} = from_world(WorldPos),
+            LB = maps:get(live_balloons, State),
+            MapList = maps:get(MapIdx, LB),
+            NewLB = LB#{MapIdx => lists:keystore(Pid, 1, MapList, {Pid, PosPx})},
+            NewState1 = State#{live_balloons => NewLB},
+            whereis(full_map_gui) ! {update, NewState1},
+            wxWindow:refresh(CanvasPanel),
+            main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewState1);
+        {ui, {bloon_moved, Pid, WorldPos}} ->
+            {MapIdx, PosPx} = from_world(WorldPos),
+            LB = maps:get(live_balloons, State),
+            LB1 = lists:foldl(
+                    fun(I, Acc) ->
+                        L = maps:get(I, Acc),
+                        Acc#{I => lists:keydelete(Pid, 1, L)}
+                    end, LB, [1,2,3,4]),
+            MapList = maps:get(MapIdx, LB1),
+            NewLB = LB1#{MapIdx => lists:keystore(Pid, 1, MapList, {Pid, PosPx})},
+            NewState2 = State#{live_balloons => NewLB},
+            whereis(full_map_gui) ! {update, NewState2},
+            wxWindow:refresh(CanvasPanel),
+            main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewState2);
+        {ui, {bloon_removed, Pid}} ->
+            LB = maps:get(live_balloons, State),
+            NewLB = lists:foldl(
+                      fun(I, Acc) ->
+                          L = maps:get(I, Acc),
+                          Acc#{I => lists:keydelete(Pid, 1, L)}
+                      end, LB, [1,2,3,4]),
+            NewState3 = State#{live_balloons => NewLB},
+            whereis(full_map_gui) ! {update, NewState3},
+            wxWindow:refresh(CanvasPanel),
+            main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewState3);
+
+        %% GUI lifecycle and controls
         #'wx'{obj=Frame, event=#'wxClose'{}} ->
             io:format("Closing main window...~n"),
             whereis(full_map_gui) ! {main_gui_closing},
@@ -233,18 +325,22 @@ main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarBu
             main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewState);
         #'wx'{obj=StartWaveButton, event=#'wxCommand'{type=command_button_clicked}} ->
             io:format("Starting a new balloon at the start of the path.~n"),
-            #{balloons := AllBalloons, current_map_index := MapIndex} = State,
+            #{balloons := AllBalloons, current_map_index := MapIndex, path := Path} = State,
             CurrentMapBalloons = maps:get(MapIndex, AllBalloons),
             NewBalloon = #{type => red, path_index => 1},
             NewMapBalloons = [NewBalloon | CurrentMapBalloons],
             UpdatedAllBalloons = AllBalloons#{MapIndex => NewMapBalloons},
-            NewState = State#{balloons => UpdatedAllBalloons},
-            whereis(full_map_gui) ! {update, NewState},
+            NewStateA = State#{balloons => UpdatedAllBalloons},
+            whereis(full_map_gui) ! {update, NewStateA},
             TotalBalloons = length(lists:flatten(maps:values(AllBalloons))),
             if TotalBalloons == 0 -> timer:send_after(?TICK_INTERVAL, self(), {tick}); true -> ok end,
+            %% Also send to backend: convert FULL path (global)
+            WorldPath = lists:map(fun to_world_full/1, Path),
+            _ = rpc:call(get_main_node(), main_server, add_bloon, [WorldPath, 3]),
             wxWindow:refresh(CanvasPanel),
-            main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewState);
+            main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewStateA);
         #'wx'{obj=ShootButton, event=#'wxCommand'{type=command_button_clicked}} ->
+            %% (kept your local projectile sim for now)
             io:format("All monkeys are shooting...~n"),
             #{projectiles := AllProjectiles, balloons := AllBalloons, path := Path,
               stamps := AllStamps, current_map_index := MapIndex} = State,
@@ -270,10 +366,10 @@ main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarBu
                 CurrentMapProjectiles = maps:get(MapIndex, AllProjectiles),
                 NewMapProjectiles = NewProjectiles ++ CurrentMapProjectiles,
                 UpdatedAllProjectiles = AllProjectiles#{MapIndex => NewMapProjectiles},
-                NewState = State#{projectiles => UpdatedAllProjectiles},
-                whereis(full_map_gui) ! {update, NewState},
+                NewStateB = State#{projectiles => UpdatedAllProjectiles},
+                whereis(full_map_gui) ! {update, NewStateB},
                 wxWindow:refresh(CanvasPanel),
-                main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewState);
+                main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewStateB);
             true ->
                 io:format("Need at least one monkey and one balloon to shoot.~n"),
                 main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, State)
@@ -282,10 +378,10 @@ main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarBu
             #{current_map_index := CurrentIndex, map_bitmaps := Maps} = State,
             NewIndex = (CurrentIndex rem length(Maps)) + 1,
             io:format("Changing to map #~p~n", [NewIndex]),
-            NewState = State#{current_map_index => NewIndex},
-            whereis(full_map_gui) ! {update, NewState},
+            NewStateC = State#{current_map_index => NewIndex},
+            whereis(full_map_gui) ! {update, NewStateC},
             wxWindow:refresh(CanvasPanel),
-            main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewState);
+            main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewStateC);
         {tick} ->
             #{balloons := AllBalloons, projectiles := AllProjectiles, path := Path, current_map_index := MapIndex} = State,
             CurrentMapBalloons = maps:get(MapIndex, AllBalloons),
@@ -309,17 +405,15 @@ main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarBu
                 end, CurrentMapProjectiles),
             UpdatedAllBalloons = AllBalloons#{MapIndex => UpdatedMapBalloons},
             UpdatedAllProjectiles = AllProjectiles#{MapIndex => UpdatedMapProjectiles},
-            NewState = State#{balloons => UpdatedAllBalloons, projectiles => UpdatedAllProjectiles},
-            whereis(full_map_gui) ! {update, NewState},
+            NewStateD = State#{balloons => UpdatedAllBalloons, projectiles => UpdatedAllProjectiles},
+            whereis(full_map_gui) ! {update, NewStateD},
             wxWindow:refresh(CanvasPanel),
             TotalBalloons = length(lists:flatten(maps:values(UpdatedAllBalloons))),
             TotalProjectiles = length(lists:flatten(maps:values(UpdatedAllProjectiles))),
             if (TotalBalloons > 0) or (TotalProjectiles > 0) ->
                 timer:send_after(?TICK_INTERVAL, self(), {tick});
-            true ->
-                ok
-            end,
-            main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewState);
+            true -> ok end,
+            main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewStateD);
         #'wx'{obj=CanvasPanel, event=#'wxMouse'{type=left_down, x=X, y=Y}} ->
             #{current_brush := BrushType, stamps := AllStamps, current_map_index := MapIndex} = State,
             case BrushType of
@@ -331,10 +425,12 @@ main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarBu
                     CurrentMapStamps = maps:get(MapIndex, AllStamps),
                     NewMapStamps = [{BrushType, StampX, StampY} | CurrentMapStamps],
                     UpdatedAllStamps = AllStamps#{MapIndex => NewMapStamps},
-                    NewState = State#{stamps => UpdatedAllStamps, current_brush => unselected},
-                    whereis(full_map_gui) ! {update, NewState},
+                    %% Also notify backend: place monkey here (range 60 world units)
+                    _ = rpc:call(get_main_node(), main_server, add_monkey, [to_world(MapIndex, {StampX, StampY}), 60]),
+                    NewStateE = State#{stamps => UpdatedAllStamps, current_brush => unselected},
+                    whereis(full_map_gui) ! {update, NewStateE},
                     wxWindow:refresh(CanvasPanel),
-                    main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewState)
+                    main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, NewStateE)
             end;
         #'wx'{obj=CanvasPanel, event=#'wxPaint'{}} ->
             #{stamps := AllStamps, balloons := AllBalloons, projectiles := AllProjectiles,
@@ -343,13 +439,14 @@ main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarBu
               red_balloon_bitmap := RedBalloonBitmap,
               ground_projectile_bitmap := GroundProjectileBitmap, fire_projectile_bitmap := FireProjectileBitmap,
               air_projectile_bitmap := AirProjectileBitmap, water_projectile_bitmap := WaterProjectileBitmap,
-              path := Path} = State,
+              path := Path, live_balloons := LiveB} = State,
             DC = wxBufferedPaintDC:new(CanvasPanel),
             CurrentMapBitmap = lists:nth(MapIndex, MapBitmaps),
             wxDC:drawBitmap(DC, CurrentMapBitmap, {0, 0}),
             CurrentMapStamps = maps:get(MapIndex, AllStamps),
             CurrentMapBalloons = maps:get(MapIndex, AllBalloons),
             CurrentMapProjectiles = maps:get(MapIndex, AllProjectiles),
+            LiveForMap = maps:get(MapIndex, LiveB),
             lists:foreach(fun({BrushType, PX, PY}) ->
                 Bitmap = case BrushType of
                     ground_brush -> GroundBitmap; fire_brush -> FireBitmap;
@@ -366,6 +463,11 @@ main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarBu
                 end,
                 lists:reverse(CurrentMapBalloons)),
             lists:foreach(
+                fun({_Pid, {BX, BY}}) ->
+                    wxDC:drawBitmap(DC, RedBalloonBitmap, {BX, BY}, [{useMask, true}])
+                end,
+                lists:reverse(LiveForMap)),
+            lists:foreach(
                 fun(Projectile) ->
                     PathIndex = maps:get(path_index, Projectile),
                     ProjectilePath = maps:get(path, Projectile),
@@ -381,4 +483,12 @@ main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarBu
             main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, State);
         _Other ->
             main_game_loop(Frame, GroundButton, FireButton, AirButton, WaterButton, AvatarButton, CanvasPanel, StartWaveButton, ShootButton, ChangeMapButton, State)
+    end.
+
+%% === helpers ===
+try_call(M, F, A, Default) ->
+    case catch apply(M, F, A) of
+        {'EXIT', _} -> Default;
+        {badrpc, _} -> Default;
+        Res -> Res
     end.
