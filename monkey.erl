@@ -1,41 +1,47 @@
+%%% monkey.erl
+%%% Scans its region; when it finds a target, tells main_server to spawn a dart.
+
 -module(monkey).
 -behaviour(gen_statem).
 
--export([start_link/3, start_remotely/3]).
+-export([start_remotely/6, start_link/6]).
 -export([init/1, callback_mode/0, searching/3, attacking/3]).
 
 -define(SCAN_INTERVAL, 500).
 -define(ATTACK_COOLDOWN, 1000).
--record(data, {pos, range, region_pid}).
 
-start_remotely(Pos, Range, RegionPid) ->
-    start_link(Pos, Range, RegionPid).
+-record(data, {id, pos, range, region_pid, type, main_node}).
 
-start_link(Pos, Range, RegionPid) ->
-    gen_statem:start_link(?MODULE, [Pos, Range, RegionPid], []).
+start_remotely(Pos, Range, Type, RegionPid, Id, MainNode) ->
+    start_link(Pos, Range, Type, RegionPid, Id, MainNode).
 
-callback_mode() ->
-    state_functions.
+start_link(Pos, Range, Type, RegionPid, Id, MainNode) ->
+    gen_statem:start_link(?MODULE, [Pos, Range, Type, RegionPid, Id, MainNode], []).
 
-init([Pos, Range, RegionPid]) ->
-    io:format("Monkey starting at ~p~n", [Pos]),
-    Data = #data{pos=Pos, range=Range, region_pid=RegionPid},
+callback_mode() -> state_functions.
+
+init([Pos, Range, Type, RegionPid, Id, MainNode]) ->
+    io:format("Monkey ~p (~p) at ~p~n", [Id, Type, Pos]),
+    Data = #data{id=Id, pos=Pos, range=Range, region_pid=RegionPid, type=Type, main_node=MainNode},
     {ok, searching, Data, {state_timeout, 0, scan}}.
 
-searching(state_timeout, scan, Data = #data{pos = MyPos}) ->
-    case gen_server:call(Data#data.region_pid, {find_bloon, MyPos, Data#data.range}) of
+searching(state_timeout, scan, Data = #data{pos=MyPos, region_pid=Reg, range=R}) ->
+    case gen_server:call(Reg, {find_bloon, MyPos, R}) of
         {ok, BloonPid} ->
-            io:format("~n>>> MONKEY at ~p THROWS ARROW! Target: ~p~n~n", [MyPos, BloonPid]),
-            fire_arrow(MyPos, BloonPid),
+            ArrowType = arrow_type_for(Data#data.type),
+            io:format("Monkey ~p shoots ~p at ~p~n", [Data#data.id, ArrowType, BloonPid]),
+            gen_server:cast({main_server, Data#data.main_node},
+                            {monkey_shot, Data#data.id, MyPos, BloonPid, ArrowType}),
             {next_state, attacking, Data, {state_timeout, ?ATTACK_COOLDOWN, cooldown_over}};
         {error, not_found} ->
-            io:format("Monkey at ~p is idle. No targets in range.~n", [MyPos]),
             {keep_state, Data, {state_timeout, ?SCAN_INTERVAL, scan}}
     end.
 
-attacking(state_timeout, cooldown_over, Data = #data{pos = MyPos}) ->
-    io:format("Monkey at ~p finished cooldown. Resuming scan.~n", [MyPos]),
+attacking(state_timeout, cooldown_over, Data) ->
     {next_state, searching, Data, {state_timeout, 0, scan}}.
 
-fire_arrow(MyPos, TargetPid) ->
-    arrow:fire(MyPos, TargetPid).
+arrow_type_for(ground_monkey) -> ground;
+arrow_type_for(fire_monkey)   -> fire;
+arrow_type_for(water_monkey)  -> water;
+arrow_type_for(avatar_monkey) ->
+    case rand:uniform(4) of 1 -> ground; 2 -> fire; 3 -> water; 4 -> air end.
