@@ -21,7 +21,7 @@ init([Id, StartX, EndX]) ->
     io:format("Region ~p (~p..~p) started~n", [Id, StartX, EndX]),
     {ok, #state{id = Id, x_start = StartX, x_end = EndX}}.
 
-%% find target for a monkey
+%% Targeting
 handle_call({find_bloon, MonkeyPos, Range}, _From, State) ->
     Closest = find_closest_bloon(MonkeyPos, Range, maps:to_list(State#state.bloons), none),
     Reply = case Closest of
@@ -37,6 +37,7 @@ handle_call(dump_positions, _From, State) ->
 handle_call(_Other, _From, State) ->
     {reply, ok, State}.
 
+%% Track bloons
 handle_cast({add_bloon, BloonPid, Pos}, State) ->
     erlang:monitor(process, BloonPid),
     {noreply, State#state{bloons = maps:put(BloonPid, Pos, State#state.bloons)}};
