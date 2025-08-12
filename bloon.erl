@@ -1,77 +1,70 @@
 -module(bloon).
--behaviour(gen_server).
+-behaviour(gen_statem).
 
--export([start_link/4, start_remotely/4, get_pos/1]).
--export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
+-export([start_link/4, get_pos/1]).
+% The callbacks exported are correct for gen_statem
+-export([init/1, callback_mode/0, terminate/3, moving/3]).
 
--define(SPEED, 2000). 
+-define(MOVE_INTERVAL, 2000).
 -define(REGION_WIDTH, 50).
 
--record(state, {path, path_index = 1, health, pos, current_region_pid, region_servers}).
+-record(state, {path, path_index, health, pos, current_region_pid, region_pids}).
 
-start_remotely(Path, Health, RegionPid, AllRegionPids) ->
-    start_link(Path, Health, RegionPid, AllRegionPids).
+get_pos(Pid) -> gen_statem:call(Pid, get_pos).
 
-get_pos(Pid) ->
-    gen_server:call(Pid, get_pos).
+start_link(Path, Health, RPid, AllRPids) -> gen_statem:start_link(?MODULE, [{start, Path, Health}, RPid, AllRPids], []).
 
-start_link(Path, Health, RegionPid, AllRegionPids) ->
-    gen_server:start_link(?MODULE, [Path, Health, RegionPid, AllRegionPids], []).
+callback_mode() -> state_functions.
 
-init([Path, Health, RegionPid, AllRegionPids]) ->
-    erlang:group_leader(erlang:whereis(user), self()),
+init([{start, Path, Health}, RPid, AllRPids]) ->
     [StartPos | _] = Path,
-    io:format("Bloon starting with ~p HP at ~p~n", [Health, StartPos]),
-    gen_server:cast(RegionPid, {add_bloon, self(), StartPos}),
-    erlang:send_after(?SPEED, self(), move),
-    {ok, #state{path=Path, health=Health, pos=StartPos, current_region_pid=RegionPid, region_servers=AllRegionPids}}.
+    gen_server:cast(RPid, {add_bloon, self(), StartPos}),
+    Data = #state{path=Path, health=Health, pos=StartPos, path_index=1,
+                  current_region_pid=RPid, region_pids=AllRPids},
+    {ok, moving, Data, {state_timeout, ?MOVE_INTERVAL, move}}. % FIXED: Changed semicolon to a period.
 
-handle_call(get_pos, _From, State) ->
-    {reply, {ok, State#state.pos}, State};
-handle_call(_Req, _From, State) ->
-    {reply, ok, State}.
+terminate(_Reason, _State, #state{current_region_pid = RPid}) ->
+    gen_server:cast(RPid, {remove_bloon, self()}).
 
-handle_info({hit, Damage}, State) ->
-    NewHealth = State#state.health - Damage,
-    % --- PRINT STATEMENT FOR HITS ---
-    io:format("Bloon at ~p HIT! Health: ~p -> ~p~n", [State#state.pos, State#state.health, NewHealth]),
+moving({call, From}, get_pos, Data) ->
+    {keep_state, Data, {reply, From, {ok, Data#state.pos}}};
+moving(info, {hit, Dmg}, Data=#state{health=H}) ->
+    NewHealth = H - Dmg,
     if
-        NewHealth =< 0 ->
-            % --- PRINT STATEMENT FOR BLOON POPPING ---
-            io:format("~n*** BLOON POPPED at position ~p! ***~n~n", [State#state.pos]),
-            {stop, normal, State};
-        true ->
-            {noreply, State#state{health = NewHealth}}
+        NewHealth =< 0 -> {stop, normal, Data#state{health=NewHealth}};
+        true -> {keep_state, Data#state{health=NewHealth}}
     end;
-
-handle_info(move, State = #state{path = Path, path_index = PathIndex}) ->
-    NextIndex = PathIndex + 1,
+moving(state_timeout, move, Data) ->
+    NextIdx = Data#state.path_index + 1,
     if
-        NextIndex > length(Path) ->
-            io:format("Bloon reached the end!~n"),
-            {stop, normal, State};
+        NextIdx > length(Data#state.path) ->
+            {stop, normal, Data};
         true ->
-            NewPos = lists:nth(NextIndex, State#state.path),
-            NewRegionPid = handle_region_crossing(State#state.pos, NewPos, self(), State),
-            gen_server:cast(NewRegionPid, {update_bloon_pos, self(), NewPos}),
-            erlang:send_after(?SPEED, self(), move),
-            {noreply, State#state{path_index = NextIndex, pos = NewPos, current_region_pid = NewRegionPid}}
+            NewPos = lists:nth(NextIdx, Data#state.path),
+            NewData = Data#state{path_index=NextIdx, pos=NewPos},
+            Action = handle_region_crossing(NewData),
+            case Action of
+                {move_to_new_node, _} ->
+                    {stop, normal, NewData};
+                {stay, OldRPid} ->
+                    gen_server:cast(OldRPid, {update_bloon_pos, self(), NewPos}),
+                    {keep_state, NewData, {state_timeout, ?MOVE_INTERVAL, move}}
+            end
     end.
 
-handle_cast(_Msg, State) ->
-    {noreply, State}.
-
-handle_region_crossing({OldX, _}, NewPos = {NewX, _}, BloonPid, _State = #state{current_region_pid = CurrentPid, region_servers = AllPids}) ->
-    OldRegionIndex = trunc(OldX / ?REGION_WIDTH),
-    NewRegionIndex = trunc(NewX / ?REGION_WIDTH),
+% FIXED: Removed the unused 'Data =' binding to silence the warning.
+handle_region_crossing(#state{pos = {NewX, _}, path = FullPath, path_index = Idx, health = H, region_pids = AllPids, current_region_pid = OldRPid}) ->
+    NewRIdx = trunc(NewX / ?REGION_WIDTH),
+    NewRPid = lists:nth(NewRIdx + 1, AllPids),
+    OldNode = node(OldRPid),
+    NewNode = node(NewRPid),
     if
-        OldRegionIndex /= NewRegionIndex ->
-            % --- PRINT STATEMENT FOR CROSSING REGIONS ---
-            io:format("--- Bloon ~p CROSSING from region ~p to ~p ---~n", [BloonPid, OldRegionIndex, NewRegionIndex]),
-            NewRegionPid = lists:nth(NewRegionIndex + 1, AllPids),
-            gen_server:cast(CurrentPid, {remove_bloon, BloonPid}),
-            gen_server:cast(NewRegionPid, {add_bloon, BloonPid, NewPos}),
-            NewRegionPid;
+        OldNode /= NewNode ->
+            io:format("--- Bloon ~p MIGRATING from node ~p to ~p ---~n", [self(), OldNode, NewNode]),
+            RestOfPath = lists:nthtail(Idx - 1, FullPath),
+            gen_server:cast(OldRPid, {remove_bloon, self()}),
+            gen_server:cast(NewRPid, {spawn_bloon, RestOfPath, H, AllPids}),
+            {move_to_new_node, NewRPid};
         true ->
-            CurrentPid
+            {stay, OldRPid}
     end.
