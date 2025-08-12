@@ -22,6 +22,7 @@ init(StartPos, TargetPid) ->
 
 loop(CurrentPos, TargetPid, Vector, StepsLeft) ->
     if
+            %%bar put here the arrow moves
         StepsLeft =< 0 ->
             exit(normal);
         true ->
