@@ -13,8 +13,7 @@ start_as_root(RegionIds) ->
         % Start the supervisor...
         {ok, _SupPid} = start_link(RegionIds),
 
-        % ...and then enter an infinite loop to keep this parent process alive.
-        % This prevents the supervisor from shutting down.
+        % !!!!kip alive 
         loop()
     end),
     ok.

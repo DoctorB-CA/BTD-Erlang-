@@ -1,7 +1,7 @@
 -module(monkey).
 -behaviour(gen_statem).
 
-% EXPORTING THE CORRECT /3 aRITY FUNCTIONS
+
 -export([start_link/3]).
 -export([init/1, callback_mode/0, searching/3, attacking/3]).
 
@@ -19,7 +19,7 @@ init([Pos, Range, RegionPid]) ->
     Data = #data{pos=Pos, range=Range, region_pid=RegionPid},
     {ok, searching, Data, {state_timeout, 0, scan}}.
 
-% CORRECTED to be a /3 function (no _State argument)
+
 searching(state_timeout, scan, Data = #data{pos = MyPos, range = Range, region_pid = RegionPid}) ->
     case gen_server:call(RegionPid, {find_bloon, MyPos, Range}) of
         {ok, BloonPid} ->
@@ -30,7 +30,7 @@ searching(state_timeout, scan, Data = #data{pos = MyPos, range = Range, region_p
             {keep_state, Data, {state_timeout, ?SCAN_INTERVAL, scan}}
     end.
 
-% CORRECTED to be a /3 function (no _State argument)
+
 attacking(state_timeout, cooldown_over, Data = #data{pos = MyPos}) ->
     io:format("Monkey at ~p finished cooldown. Resuming scan.~n", [MyPos]),
     {next_state, searching, Data, {state_timeout, 0, scan}}.

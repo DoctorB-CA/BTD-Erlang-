@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 -export([start_link/3, init/1, handle_call/3, handle_cast/2]).
 
-% Renamed the record to avoid conflicts with other modules.
+
 -record(region_state, {id, x_start, x_end, bloons = #{}}).
 
 start_link(Id, StartX, EndX) ->
@@ -19,8 +19,7 @@ handle_call({find_bloon, MonkeyPos, Range}, _From, State) ->
     {reply, Reply, State};
 handle_call(ping, _From, State) -> {reply, self(), State}.
 
-% This handler is no longer needed with the new migration logic.
-% handle_cast({recreate_bloon, BloonState}, State) -> ...
+
 
 handle_cast({spawn_monkey, Pos, Range}, State) ->
     io:format("~p: Received 'spawn_monkey' request. Starting monkey...~n", [node()]),
@@ -37,7 +36,7 @@ handle_cast({remove_bloon, BloonPid}, State) ->
 handle_cast({update_bloon_pos, BloonPid, NewPos}, State) ->
     {noreply, State#region_state{bloons = maps:update(BloonPid, NewPos, State#region_state.bloons)}}.
 
-% Helper functions (unchanged)
+
 distance({X1, Y1}, {X2, Y2}) -> math:sqrt(math:pow(X2 - X1, 2) + math:pow(Y2 - Y1, 2)).
 find_closest_bloon(_, _, [], C) -> C;
 find_closest_bloon(MPos, R, [{P, Pos} | Rest], C) ->

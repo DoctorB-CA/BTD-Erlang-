@@ -6,7 +6,7 @@
 -define(NUM_REGIONS, 4).
 -define(REGION_WIDTH, 50).
 
-% The state will now hold the actual PIDs of the remote regions.
+
 -record(state, { region_pids = [] }).
 
 start_link(AllNodes) -> gen_server:start_link({local, ?MODULE}, ?MODULE, [AllNodes], []).
@@ -22,7 +22,7 @@ init([AllNodes]) ->
         AllNodes
     ),
 
-    % Use our new helper function to reliably get the PIDs, retrying a few times.
+    
     RegionPids = [get_remote_pid(NameNode, 5) || NameNode <- RegionNameNodes],
 
     io:format("Main Server: All regions are up and running with PIDs: ~p~n", [RegionPids]),
@@ -42,14 +42,14 @@ handle_cast({add_monkey, Pos = {X, _Y}, Range}, State = #state{region_pids = Pid
 handle_cast({add_bloon, Path = [{X, _Y} | _], Health}, State = #state{region_pids = Pids}) ->
     RegionIndex = trunc(X / ?REGION_WIDTH),
     RegionPid = lists:nth(RegionIndex + 1, Pids),
-    % This is now much simpler and correct. We already have the PIDs.
+    
     gen_server:cast(RegionPid, {spawn_bloon, Path, Health, Pids}),
     {noreply, State}.
 
 handle_call(_Request, _From, State) -> {reply, ok, State}.
 
 
-%% --- HELPER FUNCTION ---
+
 get_remote_pid(_NameNode, 0) ->
     erlang:error({could_not_find_remote_pid, _NameNode});
 get_remote_pid({Name, Node} = NameNode, Retries) ->
