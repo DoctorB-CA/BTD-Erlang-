@@ -1,46 +1,71 @@
 -module(region_server).
 -behaviour(gen_server).
+
+-include("dbr.hrl").
+
 -export([start_link/3, init/1, handle_call/3, handle_cast/2]).
 
-% Renamed the record to avoid conflicts with other modules.
--record(region_state, {id, x_start, x_end, bloons = #{}}).
+% The state no longer needs to track bloons. It only needs its own ID.
+-record(region_state, {id, total_regions}).
 
-start_link(Id, StartX, EndX) ->
+start_link(Id, TotalRegions, EndX) ->
     RegionName = list_to_atom("region_" ++ integer_to_list(Id)),
-    gen_server:start_link({local, RegionName}, ?MODULE, [Id, StartX, EndX], []).
+    gen_server:start_link({local, RegionName}, ?MODULE, [Id, TotalRegions, EndX], []).
 
-init([Id, StartX, EndX]) ->
-    io:format("Region Server ~p (~p-~p) has started on node ~p.~n", [Id, StartX, EndX, node()]),
-    {ok, #region_state{id = Id, x_start = StartX, x_end = EndX}}.
+init([Id, TotalRegions, _EndX]) ->
+    io:format("*DEBUG* Region Server ~p started on node ~p.~n", [Id, node()]),
+    {ok, #region_state{id = Id, total_regions = TotalRegions}}.
 
-handle_call({find_bloon, MonkeyPos, Range}, _From, State) ->
-    Closest = find_closest_bloon(MonkeyPos, Range, maps:to_list(State#region_state.bloons), none),
-    Reply = case Closest of none -> {error, not_found}; {_Dist, Pid} -> {ok, Pid} end,
+handle_call({find_bloon, MonkeyPos, Range}, _From, State = #region_state{id = MyId, total_regions = Total}) ->
+    % Determine which regions to scan (self, previous, and next)
+    RegionsToScan = lists:usort([
+        MyId,
+        if MyId > 0 -> MyId - 1; true -> MyId end,
+        if MyId < Total - 1 -> MyId + 1; true -> MyId end
+    ]),
+    
+    % Fetch bloons from the database for all relevant regions
+    BloonRecords = db:get_bloons_in_regions(RegionsToScan),
+    
+    % Find the closest bloon from the fetched records
+    Closest = find_closest_bloon(MonkeyPos, Range, BloonRecords, none),
+    
+    Reply = case Closest of
+        none -> {error, not_found};
+        {_Dist, BloonPid} -> {ok, BloonPid}
+    end,
     {reply, Reply, State};
+
 handle_call(ping, _From, State) -> {reply, self(), State}.
 
-% This handler is no longer needed with the new migration logic.
-% handle_cast({recreate_bloon, BloonState}, State) -> ...
-
-handle_cast({spawn_monkey, Pos, Range}, State) ->
-    io:format("~p: Received 'spawn_monkey' request. Starting monkey...~n", [node()]),
-    monkey:start_link(Pos, Range, self()),
+handle_cast({spawn_monkey, Pos, Range}, State = #region_state{id = RegionId}) ->
+    io:format("*DEBUG* ~p: Spawning monkey.~n", [node()]),
+    monkey:start_link(Pos, Range, self(), RegionId),
     {noreply, State};
-% This now handles both initial spawns and migrations.
-handle_cast({spawn_bloon, Path, Health, AllRegionPids}, State) ->
-    bloon:start_link(Path, Health, self(), AllRegionPids),
-    {noreply, State};
-handle_cast({add_bloon, BloonPid, Pos}, State) ->
-    {noreply, State#region_state{bloons = maps:put(BloonPid, Pos, State#region_state.bloons)}};
-handle_cast({remove_bloon, BloonPid}, State) ->
-    {noreply, State#region_state{bloons = maps:remove(BloonPid, State#region_state.bloons)}};
-handle_cast({update_bloon_pos, BloonPid, NewPos}, State) ->
-    {noreply, State#region_state{bloons = maps:update(BloonPid, NewPos, State#region_state.bloons)}}.
 
-% Helper functions (unchanged)
+handle_cast({spawn_bloon, Path, Health, AllRegionPids, RegionId}, State) ->
+    bloon:start_link(Path, Health, self(), AllRegionPids, RegionId),
+    {noreply, State}.
+
+% Helper functions
 distance({X1, Y1}, {X2, Y2}) -> math:sqrt(math:pow(X2 - X1, 2) + math:pow(Y2 - Y1, 2)).
-find_closest_bloon(_, _, [], C) -> C;
-find_closest_bloon(MPos, R, [{P, Pos} | Rest], C) ->
-    Dist = distance(MPos, Pos),
-    NC = if Dist =< R -> case C of none -> {Dist, P}; {CD, _} when Dist < CD -> {Dist, P}; _ -> C end; true -> C end,
-    find_closest_bloon(MPos, R, Rest, NC).
+
+find_closest_bloon(_, _, [], Closest) -> Closest;
+find_closest_bloon(MonkeyPos, Range, [Bloon | Rest], Closest) ->
+    % The bloon's position is now derived from its path and path_index
+    #bloon{id = Pid, path = Path, path_index = PathIdx} = Bloon,
+    BloonPos = lists:nth(PathIdx, Path),
+    
+    Dist = distance(MonkeyPos, BloonPos),
+    
+    NewClosest = if
+        Dist =< Range ->
+            case Closest of
+                none -> {Dist, Pid};
+                {ClosestDist, _} when Dist < ClosestDist -> {Dist, Pid};
+                _ -> Closest
+            end;
+        true ->
+            Closest
+    end,
+    find_closest_bloon(MonkeyPos, Range, Rest, NewClosest).

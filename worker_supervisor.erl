@@ -23,12 +23,13 @@ start_link(RegionIds) ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, [RegionIds]).
 
 init([RegionIds]) ->
-    io:format("~p: Worker Supervisor started. Managing regions: ~p~n", [node(), RegionIds]),
+    io:format("*DEBUG* ~p: Worker Supervisor started. Managing regions: ~p~n", [node(), RegionIds]),
+    TotalRegions = length(RegionIds), % Assuming RegionIds is a list like [0, 1, 2, 3]
     RegionSpecs = lists:map(
         fun(Id) ->
             #{
                 id => {region_server, Id},
-                start => {region_server, start_link, [Id, ?REGION_WIDTH * Id, ?REGION_WIDTH * (Id + 1) - 1]},
+                start => {region_server, start_link, [Id, TotalRegions, ?REGION_WIDTH * (Id + 1) - 1]},
                 restart => permanent,
                 type => worker
             }

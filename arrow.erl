@@ -6,10 +6,12 @@
 -define(MAX_RANGE, 300).
 -define(HIT_THRESHOLD, 8).
 
-fire(StartPos, TargetPid) ->
-    spawn(fun() -> init(StartPos, TargetPid) end).
+fire(StartPos, TargetId) ->
+    spawn(fun() -> init(StartPos, TargetId) end).
 
-init(StartPos, TargetPid) ->
+init(StartPos, TargetId) ->
+    % The target is now a globally registered name, not a PID
+    TargetPid = global:whereis_name(TargetId),
     link(TargetPid),
     case bloon:get_pos(TargetPid) of
         {ok, TargetPos} ->
@@ -22,6 +24,7 @@ init(StartPos, TargetPid) ->
 
 loop(CurrentPos, TargetPid, Vector, StepsLeft) ->
     if
+            %%bar put here the arrow moves
         StepsLeft =< 0 ->
             exit(normal);
         true ->

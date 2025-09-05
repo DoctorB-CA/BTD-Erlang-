@@ -5,10 +5,12 @@
 start_link(AllNodes) ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, [AllNodes]).
 
-init([AllNodes]) ->
+init([WorkerNodes]) ->
+    AllNodes = [node() | WorkerNodes],
+    ok = db:init(AllNodes),
     MainServerSpec = #{
         id => main_server,
-        start => {main_server, start_link, [AllNodes]},
+        start => {main_server, start_link, [WorkerNodes]},
         restart => permanent,
         type => worker
     },

@@ -1,0 +1,26 @@
+{application, proj,
+ [{description, "A tower defense game"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, { main_supervisor, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    wx
+   ]},
+  {env,[]},
+  {modules, [
+    arrow,
+    bloon,
+    db,
+    game,
+    main_server,
+    main_supervisor,
+    monkey,
+    region_server,
+    w,
+    worker_supervisor
+  ]},
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.

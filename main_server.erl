@@ -43,7 +43,7 @@ handle_cast({add_bloon, Path = [{X, _Y} | _], Health}, State = #state{region_pid
     RegionIndex = trunc(X / ?REGION_WIDTH),
     RegionPid = lists:nth(RegionIndex + 1, Pids),
     % This is now much simpler and correct. We already have the PIDs.
-    gen_server:cast(RegionPid, {spawn_bloon, Path, Health, Pids}),
+    gen_server:cast(RegionPid, {spawn_bloon, Path, Health, Pids, RegionIndex}),
     {noreply, State}.
 
 handle_call(_Request, _From, State) -> {reply, ok, State}.
