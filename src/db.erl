@@ -1,5 +1,5 @@
 -module(db).
--export([init/1, create_schema_on_workers/1]).
+-export([init/1, create_schema_on_workers/2]).
 -export([write_bloon/1, delete_bloon/1, write_monkey/1, delete_monkey/1]).
 -export([get_bloons_in_regions/1]).
 
@@ -68,20 +68,22 @@ init(AllNodes) ->
     create_tables(AllNodes),
 
     io:format("DB: Telling worker nodes to start Mnesia and wait for tables...~n"),
-    rpc:multicall(AllNodes, ?MODULE, create_schema_on_workers, [self()]),
+    Workers = AllNodes -- [node()],
+    Results = rpc:multicall(Workers, ?MODULE, create_schema_on_workers, [self(), 20000]),
+    io:format("DB: Worker init results: ~p~n", [Results]),
     
     io:format("DB: Main node setup complete.~n"),
     ok.
 
 %% @doc
 %% This is called via RPC on all the WORKER nodes.
-create_schema_on_workers(MainNode) ->
+create_schema_on_workers(MainNode, Timeout) ->
     io:format("DB (~p): Starting Mnesia...~n", [node()]),
     ok = mnesia:start(),
     io:format("DB (~p): Waiting for tables from ~p...~n", [node(), MainNode]),
-    mnesia:wait_for_tables([bloon, monkey], 20000),
-    io:format("DB (~p): Tables are ready.~n", [node()]),
-    ok.
+    Result = mnesia:wait_for_tables([bloon, monkey], Timeout),
+    io:format("DB (~p): Tables are ready with result: ~p~n", [node(), Result]),
+    Result.
 
 %% @private
 %% Defines and creates all Mnesia tables.
@@ -98,14 +100,17 @@ create_tables(AllNodes) ->
     ],
 
     % Create the 'bloon' table.
-    case mnesia:create_table(bloon, TableProps ++ [{attributes, record_info(fields, bloon)}]) of
-        {atomic, ok} -> io:format("DB: Table 'bloon' created.~n");
-        {aborted, {already_exists, bloon}} -> io:format("DB: Table 'bloon' already exists.~n")
+    case mnesia:create_table(bloon, TableProps) of
+        {atomic, ok} ->
+            io:format("DB: Table 'bloon' created.~n");
+        {aborted, {already_exists, bloon}} ->
+            io:format("DB: Table 'bloon' already exists.~n")
     end,
 
     % Create the 'monkey' table.
-    case mnesia:create_table(monkey, TableProps ++ [{attributes, record_info(fields, monkey)}]) of
-        {atomic, ok} -> io:format("DB: Table 'monkey' created.~n");
-        {aborted, {already_exists, monkey}} -> io:format("DB: Table 'monkey' already exists.~n")
-    end,
-    ok.
+    case mnesia:create_table(monkey, TableProps) of
+        {atomic, ok} ->
+            io:format("DB: Table 'monkey' created.~n");
+        {aborted, {already_exists, monkey}} ->
+            io:format("DB: Table 'monkey' already exists.~n")
+    end.
