@@ -1,9 +1,79 @@
-(worker1@132.72.81.167)1> *DEBUG* 'worker1@132.72.81.167': Worker Supervisor started. Managing regions: [0]
-*DEBUG* Region Server 0 started on node 'worker1@132.72.81.167'.
-=ERROR REPORT==== 6-Sep-2025::09:41:27.719685 ===
-Error in process <0.221.0> on node 'worker1@132.72.81.167' with exit value:
-{{badmatch,{error,{already_started,<0.218.0>}}},
+(worker1@132.72.81.167)1> *DEBUG* 'worker1@132.72.81.167': Worker Supervisor started. Managing regions: 0
+=ERROR REPORT==== 6-Sep-2025::10:34:16.855235 ===
+Error in process <0.169.0> on node 'worker1@132.72.81.167' with exit value:
+{{badmatch,
+     {error,
+         {badarg,
+             [{erlang,length,[0],[{error_info,#{module => erl_erts_errors}}]},
+              {worker_supervisor,init,1,
+                  [{file,
+                       "/home/csestudent/.local/share/Trash/files/Proj/src/worker_supervisor.erl"},
+                   {line,27}]},
+              {supervisor,init,1,[{file,"supervisor.erl"},{line,330}]},
+              {gen_server,init_it,2,[{file,"gen_server.erl"},{line,423}]},
+              {gen_server,init_it,6,[{file,"gen_server.erl"},{line,390}]},
+              {proc_lib,init_p_do_apply,3,
+                  [{file,"proc_lib.erl"},{line,226}]}]}}},
  [{worker_supervisor,'-start_as_root/1-fun-0-',1,
-                     [{file,"/home/csestudent/Desktop/bar/Proj/src/worker_supervisor.erl"},
-                      {line,14}]}]}
+      [{file,
+           "/home/csestudent/.local/share/Trash/files/Proj/src/worker_supervisor.erl"},
+       {line,14}]}]}
 
+=CRASH REPORT==== 6-Sep-2025::10:34:16.855384 ===
+  crasher:
+    initial call: supervisor:worker_supervisor/1
+    pid: <0.170.0>
+    registered_name: []
+    exception error: bad argument
+      in function  length/1
+         called as length(0)
+         *** argument 1: not a list
+      in call from worker_supervisor:init/1 (/home/csestudent/.local/share/Trash/files/Proj/src/worker_supervisor.erl, line 27)
+      in call from supervisor:init/1 (supervisor.erl, line 330)
+      in call from gen_server:init_it/2 (gen_server.erl, line 423)
+      in call from gen_server:init_it/6 (gen_server.erl, line 390)
+    ancestors: [<0.169.0>]
+    message_queue_len: 1
+    messages: [{'EXIT',<0.169.0>,
+                   {{badmatch,
+                     {error,
+                      {badarg,
+                       [{erlang,length,
+                         [0],
+                         [{error_info,#{module => erl_erts_errors}}]},
+                        {worker_supervisor,init,1,
+                         [{file,
+                           "/home/csestudent/.local/share/Trash/files/Proj/src/worker_supervisor.erl"},
+                          {line,27}]},
+                        {supervisor,init,1,
+                         [{file,"supervisor.erl"},{line,330}]},
+                        {gen_server,init_it,2,
+                         [{file,"gen_server.erl"},{line,423}]},
+                        {gen_server,init_it,6,
+                         [{file,"gen_server.erl"},{line,390}]},
+                        {proc_lib,init_p_do_apply,3,
+                         [{file,"proc_lib.erl"},{line,226}]}]}}},
+                    [{worker_supervisor,'-start_as_root/1-fun-0-',1,
+                      [{file,
+                        "/home/csestudent/.local/share/Trash/files/Proj/src/worker_supervisor.erl"},
+                       {line,14}]}]}}]
+    links: []
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 1598
+    stack_size: 29
+    reductions: 308
+  neighbours:
+
+(worker1@132.72.81.167)1> *DEBUG* 'worker1@132.72.81.167': Worker Supervisor started. Managing regions: [0]
+* 1:13: syntax error before: '.'
+(worker1@132.72.81.167)1> Managing regions: [0]
+(worker1@132.72.81.167)1> *DEBUG* Region Server 0 started on node 'worker1@132.72.81.167'.
+* 1:10: syntax error before: regions
+(worker1@132.72.81.167)1> =ERROR REPORT==== 6-Sep-2025::09:41:27.719685 ===
+(worker1@132.72.81.167)1> Error in process <0.221.0> on node 'worker1@132.72.81.167' with exit value:
+(worker1@132.72.81.167)1> {{badmatch,{error,{already_started,<0.218.0>}}},
+(worker1@132.72.81.167)1>  [{worker_supervisor,'-start_as_root/1-fun-0-',1,
+(worker1@132.72.81.167)1>                      [{file,"/home/csestudent/Desktop/bar/Proj/src/worker_supervisor.erl"},
+(worker1@132.72.81.167)1>                       {line,14}]}]}
