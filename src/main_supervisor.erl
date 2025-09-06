@@ -8,11 +8,7 @@ start_link(AllWorkerNodes) ->
 
 % init receives the worker nodes from start_link
 init([AllWorkerNodes]) ->
-    io:format("Main Supervisor starting with manual node list.~n"),
-
-    % The DB setup now happens here, using the provided node list
-    AllNodes = [node() | AllWorkerNodes],
-    db:init(AllNodes),
+    io:format("Main Supervisor starting.~n"),
 
     MainServerSpec = #{
         id => main_server,

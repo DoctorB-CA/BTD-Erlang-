@@ -65,7 +65,7 @@ init(AllNodes) ->
     ok = mnesia:start(),
 
     io:format("DB: Creating tables...~n"),
-    create_tables(),
+    create_tables(AllNodes),
 
     io:format("DB: Telling worker nodes to start Mnesia and wait for tables...~n"),
     rpc:multicall(AllNodes, ?MODULE, create_schema_on_workers, [self()]),
@@ -85,9 +85,9 @@ create_schema_on_workers(MainNode) ->
 
 %% @private
 %% Defines and creates all Mnesia tables.
-create_tables() ->
+create_tables(AllNodes) ->
     MainNode = node(),
-    WorkerNodes = nodes() -- [MainNode],
+    WorkerNodes = AllNodes -- [MainNode],
 
     % Define the table properties.
     % The master copy is on the main node's disk.
