@@ -1,0 +1,9 @@
+(worker1@132.72.81.167)1> *DEBUG* 'worker1@132.72.81.167': Worker Supervisor started. Managing regions: [0]
+*DEBUG* Region Server 0 started on node 'worker1@132.72.81.167'.
+=ERROR REPORT==== 6-Sep-2025::09:41:27.719685 ===
+Error in process <0.221.0> on node 'worker1@132.72.81.167' with exit value:
+{{badmatch,{error,{already_started,<0.218.0>}}},
+ [{worker_supervisor,'-start_as_root/1-fun-0-',1,
+                     [{file,"/home/csestudent/Desktop/bar/Proj/src/worker_supervisor.erl"},
+                      {line,14}]}]}
+
