@@ -28,13 +28,14 @@ init([Pos, Range, RegionPid, RegionId]) ->
 searching(state_timeout, scan, Data = #data{pos = MyPos, range = Range, region_pid = RegionPid}) ->
     case gen_server:call(RegionPid, {find_bloon, MyPos, Range}) of
         {ok, BloonId} ->
-            io:format("~n*DEBUG* MONKEY at ~p THROWS ARROW! Target: ~p~n~n", [MyPos, BloonId]),
-            fire_arrow(MyPos, BloonId),
+            io:format("Monkey at ~p firing at bloon ~p~n", [MyPos, BloonId]),
+            % Fire an arrow at the bloon's last known position.
+            arrow:fire(MyPos, BloonId),
             {next_state, attacking, Data, {state_timeout, ?ATTACK_COOLDOWN, cooldown_over}};
         {error, not_found} ->
             {keep_state, Data, {state_timeout, ?SCAN_INTERVAL, scan}};
         Other ->
-            io:format("*DEBUG* Monkey received unexpected reply: ~p~n", [Other]),
+            io:format("Monkey received unexpected reply: ~p~n", [Other]),
             {keep_state, Data, {state_timeout, ?SCAN_INTERVAL, scan}}
     end.
 
@@ -42,6 +43,3 @@ searching(state_timeout, scan, Data = #data{pos = MyPos, range = Range, region_p
 attacking(state_timeout, cooldown_over, Data = #data{pos = MyPos}) ->
     io:format("Monkey at ~p finished cooldown. Resuming scan.~n", [MyPos]),
     {next_state, searching, Data, {state_timeout, 0, scan}}.
-
-fire_arrow(MyPos, TargetPid) ->
-    arrow:fire(MyPos, TargetPid).

@@ -1,48 +1,92 @@
 -module(arrow).
+-behaviour(gen_statem).
+
+-include("dbr.hrl").
+
+%% ===================================================================
+%% Public API
+%% ===================================================================
 -export([fire/2]).
 
--define(SPEED, 10).
--define(TICK_RATE, 50).
--define(MAX_RANGE, 300).
--define(HIT_THRESHOLD, 8).
+%% ===================================================================
+%% gen_statem Callbacks
+%% ===================================================================
+-export([init/1, callback_mode/0, terminate/3, flying/3]).
 
+-define(DAMAGE, 1).
+-define(SPEED, 20).
+-define(TICK_RATE, 50). % ms
+-define(HIT_THRESHOLD, 10).
+-define(REGION_WIDTH, 50).
+
+-record(data, {
+    current_pos,
+    target_pos
+}).
+
+%% ===================================================================
+%% Public API Implementation
+%% ===================================================================
+
+%% Fire an arrow from StartPos towards a BloonId
 fire(StartPos, TargetId) ->
-    spawn(fun() -> init(StartPos, TargetId) end).
-
-init(StartPos, TargetId) ->
-    % The target is now a globally registered name, not a PID
-    TargetPid = global:whereis_name(TargetId),
-    link(TargetPid),
-    case bloon:get_pos(TargetPid) of
-        {ok, TargetPos} ->
-            Vector = calculate_vector(StartPos, TargetPos),
-            MaxSteps = round(?MAX_RANGE / ?SPEED),
-            loop(StartPos, TargetPid, Vector, MaxSteps);
-        {error, _Reason} ->
-            exit(normal)
+    % We don't track the bloon. We get its current position and fire at that spot.
+    F = fun() -> mnesia:read({bloon, TargetId}) end,
+    case mnesia:transaction(F) of
+        {atomic, [B]} ->
+            TargetPos = lists:nth(B#bloon.path_index, B#bloon.path),
+            % Start a temporary FSM to control the arrow's flight.
+            gen_statem:start_link(?MODULE, [StartPos, TargetPos], []);
+        _ ->
+            % Bloon might have died between scan and fire, that's ok.
+            ok
     end.
 
-loop(CurrentPos, TargetPid, Vector, StepsLeft) ->
+%% ===================================================================
+%% gen_statem Callback Implementation
+%% ===================================================================
+
+callback_mode() -> state_functions.
+
+init([StartPos, TargetPos]) ->
+    Data = #data{current_pos = StartPos, target_pos = TargetPos},
+    % Start in the 'flying' state and trigger the first move immediately.
+    {ok, flying, Data, [{state_timeout, 0, move}]}.
+
+%% ===================================================================
+%% State: flying
+%% The arrow is moving towards its target position.
+%% ===================================================================
+flying({state_timeout, _, move}, _From, Data = #data{current_pos = CurrentPos, target_pos = TargetPos}) ->
+    Dist = distance(CurrentPos, TargetPos),
     if
-            %%bar put here the arrow moves
-        StepsLeft =< 0 ->
-            exit(normal);
+        Dist < ?HIT_THRESHOLD ->
+            % We've reached the destination. Apply damage and stop.
+            apply_damage(TargetPos),
+            {stop, normal, Data};
         true ->
-            timer:sleep(?TICK_RATE),
+            % Move closer and schedule the next move.
+            Vector = calculate_vector(CurrentPos, TargetPos),
             NewPos = move(CurrentPos, Vector),
-            case bloon:get_pos(TargetPid) of
-                {ok, TargetPos} ->
-                    Dist = distance(NewPos, TargetPos),
-                    if
-                        Dist < ?HIT_THRESHOLD ->
-                            TargetPid ! {hit, 1},
-                            exit(normal);
-                        true ->
-                            loop(NewPos, TargetPid, Vector, StepsLeft - 1)
-                    end;
-                {error, _Reason} ->
-                    exit(normal)
-            end
+            NewData = Data#data{current_pos = NewPos},
+            {keep_state, NewData, [{state_timeout, ?TICK_RATE, move}]}
+    end.
+
+%% ===================================================================
+%% Helper Functions
+%% ===================================================================
+
+%% Find all bloons near the impact site and damage them.
+apply_damage(ImpactPos) ->
+    RegionId = trunc(element(1, ImpactPos) / ?REGION_WIDTH),
+    RegionName = list_to_atom("region_" ++ integer_to_list(RegionId)),
+    % Ask the region server to find a bloon at the impact site.
+    case gen_server:call(RegionName, {find_bloon, ImpactPos, ?HIT_THRESHOLD}) of
+        {ok, BloonId} ->
+            % If found, tell that bloon's FSM to take damage.
+            bloon:take_damage(BloonId, ?DAMAGE);
+        {error, not_found} ->
+            ok
     end.
 
 calculate_vector({X1, Y1}, {X2, Y2}) ->
@@ -59,3 +103,9 @@ move({X, Y}, {VX, VY}) ->
 
 distance({X1, Y1}, {X2, Y2}) ->
     math:sqrt(math:pow(X2 - X1, 2) + math:pow(Y2 - Y1, 2)).
+
+%% ===================================================================
+%% Termination
+%% ===================================================================
+terminate(_Reason, _State, _Data) ->
+    ok.
