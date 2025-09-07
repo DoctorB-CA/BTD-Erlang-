@@ -101,16 +101,17 @@ init(AllNodes) ->
     create_tables(AllNodes),
 
     io:format("DB: Waiting for tables to be ready on all worker nodes...~n"),
-    Results = rpc:multicall(WorkerNodes, mnesia, wait_for_tables, [[bloon, monkey], 20000]),
-    io:format("DB: Worker wait_for_tables results: ~p~n", [Results]),
+    {Replies, BadNodes} = rpc:multicall(WorkerNodes, mnesia, wait_for_tables, [[bloon, monkey], 20000]),
+    io:format("DB: Worker wait_for_tables replies: ~p~n", [Replies]),
+    io:format("DB: Worker nodes that failed RPC: ~p~n", [BadNodes]),
 
-    case lists:all(fun(ok) -> true; (_) -> false end, Results) of
+    case lists:all(fun(ok) -> true; (_) -> false end, Replies) andalso (BadNodes == []) of
         true ->
             io:format("DB: All workers ready. Main node setup complete.~n"),
             ok;
         false ->
             io:format("*ERROR* Some workers failed to get tables ready. Aborting.~n"),
-            {error, {worker_tables_not_ready, Results}}
+            {error, {worker_tables_not_ready, {Replies, BadNodes}}}
     end.
 
 %% @private
