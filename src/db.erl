@@ -131,22 +131,24 @@ create_tables(AllNodes) ->
         {attributes, record_info(fields, monkey)}
     ],
 
-    % Create tables within a single transaction
-    F = fun() ->
-        mnesia:create_table(bloon, BloonProps),
-        mnesia:create_table(monkey, MonkeyProps)
+    % Create bloon table. This is already a transaction.
+    case mnesia:create_table(bloon, BloonProps) of
+        {atomic, ok} ->
+            io:format("DB: Table 'bloon' created successfully.~n");
+        {aborted, {already_exists, bloon}} ->
+            io:format("DB: Table 'bloon' already exists.~n");
+        {aborted, Reason1} ->
+            io:format("DB: Error creating 'bloon' table: ~p~n", [Reason1])
     end,
 
-    case mnesia:transaction(F) of
-        {atomic, {ok, ok}} ->
-            io:format("DB: Tables 'bloon' and 'monkey' created successfully.~n");
-        {aborted, Reason} ->
-            % Check if it's because they already exist, which is fine
-            case Reason of
-                {already_exists, bloon} -> io:format("DB: Table 'bloon' already exists.~n");
-                {already_exists, monkey} -> io:format("DB: Table 'monkey' already exists.~n");
-                _ -> io:format("DB: Error creating tables: ~p~n", [Reason])
-            end
+    % Create monkey table. This is already a transaction.
+    case mnesia:create_table(monkey, MonkeyProps) of
+        {atomic, ok} ->
+            io:format("DB: Table 'monkey' created successfully.~n");
+        {aborted, {already_exists, monkey}} ->
+            io:format("DB: Table 'monkey' already exists.~n");
+        {aborted, Reason2} ->
+            io:format("DB: Error creating 'monkey' table: ~p~n", [Reason2])
     end,
 
     io:format("DB: Waiting for tables to be loaded on main node...~n"),
