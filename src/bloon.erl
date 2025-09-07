@@ -101,7 +101,7 @@ moving({cast, {freeze, Duration}}, _From, Data) ->
     % Transition to the 'frozen' state. Set a timer to unfreeze.
     {next_state, frozen, Data, [{state_timeout, Duration, unfreeze}]};
 
-moving({cast, {take_damage, Damage}}, _From, Data = #data{b = B}) ->
+moving({cast, {take_damage, Damage}}, _From, Data) ->
     handle_damage(Damage, Data);
 
 moving({cast, {update_region_pids, NewPids}}, _From, Data) ->
@@ -156,101 +156,4 @@ terminate(Reason, _State, Data) ->
         true -> "unknown"
     end,
     io:format("Bloon FSM for ~p terminating. Reason: ~p~n", [Id, Reason]),
-    ok.
-
-
-%% ===================================================================
-%% gen_server callbacks
-%% ===================================================================
-
-init([BloonId]) ->
-    io:format("Bloon process ~p starting for ID ~p on node ~p~n", [self(), BloonId, node()]),
-    % Read the initial state from Mnesia ONCE.
-    % We use a transaction here to ensure we get a consistent read.
-    F = fun() -> mnesia:read({bloon, BloonId}) end,
-    case mnesia:transaction(F) of
-        {atomic, [B]} ->
-            erlang:send_after(?MOVE_INTERVAL, self(), move),
-            {ok, #state{b = B, all_region_pids = []}};
-        {atomic, []} ->
-            io:format("Bloon process ~p could not find its data for ID ~p. Stopping.~n", [self(), BloonId]),
-            {stop, not_found};
-        {aborted, Reason} ->
-            io:format("Bloon process ~p failed to read data for ID ~p: ~p. Stopping.~n", [self(), BloonId, Reason]),
-            {stop, {db_error, Reason}}
-    end.
-
-handle_call(_Request, _From, State) ->
-    {reply, ok, State}.
-
-handle_cast({take_damage, Damage}, State = #state{b = B}) ->
-    NewHealth = B#bloon.health - Damage,
-    if
-        NewHealth =< 0 ->
-            % Bloon is dead. Delete it from the database.
-            io:format("Bloon ~p died from damage.~n", [B#bloon.id]),
-            FDel = fun() -> mnesia:delete({bloon, B#bloon.id}) end,
-            mnesia:transaction(FDel), % Fire and forget, if it fails, it will be cleaned up later
-            {stop, normal, State};
-        true ->
-            % Bloon is damaged. Update our state and write the new state to the DB.
-            NewB = B#bloon{health = NewHealth},
-            FWrite = fun() -> mnesia:write(NewB) end,
-            mnesia:transaction(FWrite),
-            {noreply, State#state{b = NewB}}
-    end;
-
-handle_cast({update_region_pids, NewPids}, State) ->
-    {noreply, State#state{all_region_pids = NewPids}};
-
-handle_cast(_Msg, State) ->
-    {noreply, State}.
-
-handle_info(move, State = #state{b = B, all_region_pids = Pids}) ->
-    NextIdx = B#bloon.path_index + 1,
-    Path = B#bloon.path,
-
-    if
-        NextIdx > length(Path) ->
-            % Reached end of path. Delete from DB and stop.
-            io:format("Bloon ~p reached end of path in region ~p.~n", [B#bloon.id, B#bloon.region_id]),
-            FDel = fun() -> mnesia:delete({bloon, B#bloon.id}) end,
-            mnesia:transaction(FDel),
-            {stop, normal, State};
-        true ->
-            % Still on path. Calculate new state.
-            NewPos = lists:nth(NextIdx, Path),
-            NewRegionId = trunc(element(1, NewPos) / ?REGION_WIDTH),
-            UpdatedB = B#bloon{path_index = NextIdx, region_id = NewRegionId},
-
-            % Write the updated state to the database.
-            FWrite = fun() -> mnesia:write(UpdatedB) end,
-            mnesia:transaction(FWrite),
-
-            if
-                UpdatedB#bloon.region_id /= B#bloon.region_id andalso Pids /= [] ->
-                    % We crossed into a new region.
-                    io:format("Bloon ~p crossing from region ~p to ~p~n", [B#bloon.id, B#bloon.region_id, NewRegionId]),
-                    NewRegionPid = lists:nth(NewRegionId + 1, Pids),
-                    % Tell the new region server to take over control of this bloon.
-                    gen_server:cast(NewRegionPid, {take_control, B#bloon.id}),
-                    % Stop this process. The new region will start a new one.
-                    {stop, normal, State#state{b = UpdatedB}};
-                true ->
-                    % Continue moving in the same region.
-                    erlang:send_after(?MOVE_INTERVAL, self(), move),
-                    {noreply, State#state{b = UpdatedB}}
-            end
-    end;
-
-handle_info(_Info, State) ->
-    {noreply, State}.
-
-terminate(Reason, State) ->
-    % State can be undefined if init fails early
-    Id = if
-        is_record(State, state) -> State#state.b#bloon.id;
-        true -> "unknown"
-    end,
-    io:format("Bloon process for ~p terminating. Reason: ~p~n", [Id, Reason]),
     ok.

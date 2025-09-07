@@ -60,7 +60,7 @@ handle_cast({update_region_pids, NewPids}, State = #region_state{id = MyId}) ->
     io:format("Region ~p received updated PID list.~n", [MyId]),
     % Tell all bloon controllers in this region about the new PIDs.
     broadcast_to_bloons({update_region_pids, NewPids}, MyId),
-    {noreply, State#state{all_region_pids = NewPids}}.
+    {noreply, State#region_state{all_region_pids = NewPids}}.
 
 %% ===================================================================
 %% Helper Functions
