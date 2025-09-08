@@ -16,8 +16,10 @@ start(_StartType, _StartArgs) ->
             io:format("Node ~p is the main node. Starting main_supervisor.~n", [node()]),
             main_supervisor:start_link();
         false ->
-            io:format("Node ~p is a worker node. Waiting for main server to assign work.~n", [node()]),
-            {ok, self()} % Do nothing, just start the app and wait.
+            io:format("Node '~p' is a worker node. Waiting for main server to assign work.~n", [node()]),
+            % On a worker node, we just start the application and its dependencies.
+            % The main_server will use RPC to start the worker_supervisor later.
+            ok
     end.
 
 stop(_State) ->
