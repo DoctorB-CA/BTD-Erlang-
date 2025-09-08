@@ -1,5 +1,9 @@
 -module(db).
--export([init/1]).
+-behaviour(gen_server).
+
+-export([start_link/0]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
+
 -export([write_bloon/1, delete_bloon/1, write_monkey/1, delete_monkey/1]).
 -export([get_bloons_in_regions/1]).
 
@@ -8,6 +12,9 @@
 %% ===================================================================
 %% Public API
 %% ===================================================================
+
+start_link() ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 %% @doc Fetches all bloon records for a given list of region IDs.
 get_bloons_in_regions(RegionIds) ->
@@ -23,7 +30,7 @@ get_bloons_in_regions(RegionIds) ->
     case mnesia:transaction(F) of
         {atomic, Result} -> Result;
         {aborted, Reason} ->
-            io:format("*ERROR* DB transaction aborted in get_bloons_in_regions: ~p~n", [Reason]),
+            io:format("DB Error: transaction aborted in get_bloons_in_regions: ~p~n", [Reason]),
             []
     end.
 
@@ -49,108 +56,74 @@ delete_monkey(MonkeyId) ->
     F = fun() -> mnesia:delete(Oid) end,
     mnesia:transaction(F).
 
-
 %% ===================================================================
-%% Setup Functions
+%% gen_server callbacks
 %% ===================================================================
 
-%% @doc
-%% This is called from the main node's shell to initialize the entire distributed DB.
-%% It ensures a clean start, creates the schema, starts Mnesia on all nodes,
-%% creates the tables, and waits for them to be ready everywhere.
-init(AllNodes) ->
+init([]) ->
+    io:format("DB process starting on main node.~n"),
+    % This process only runs on the main node.
+    % It's responsible for setting up the Mnesia schema for the whole cluster.
     MainNode = node(),
-    WorkerNodes = AllNodes -- [MainNode],
-
-    io:format("DB: Stopping Mnesia on all nodes to ensure a clean start.~n"),
-    rpc:multicall(AllNodes, mnesia, stop, []),
-    timer:sleep(1000), % Give it a moment to stop
-
-    io:format("DB: Deleting old schema on main node.~n"),
-    mnesia:delete_schema([MainNode]), % Only delete on the disc node
-    timer:sleep(1000),
-
-    io:format("DB: Creating Mnesia schema on main node: ~p~n", [MainNode]),
+    mnesia:delete_schema([MainNode]),
+    timer:sleep(500),
     case mnesia:create_schema([MainNode]) of
         ok -> ok;
-        {error, {MainNode, {already_exists, MainNode}}} ->
-            io:format("DB: Schema already exists on ~p, which is okay.~n", [MainNode]),
-            ok;
-        {error, CreateReason} ->
-            io:format("DB: Error creating schema: ~p~n", [CreateReason]),
-            exit({schema_creation_failed, CreateReason})
+        {error, {MainNode, {already_exists, MainNode}}} -> ok;
+        {error, Reason} -> exit({schema_creation_failed, Reason})
     end,
+    mnesia:start(),
+    create_tables(),
+    {ok, #{}}.
 
-    io:format("DB: Starting Mnesia on main node...~n"),
-    ok = mnesia:start(),
+handle_call(_Request, _From, State) ->
+    {reply, ok, State}.
 
-    io:format("DB: Starting Mnesia on worker nodes...~n"),
-    rpc:multicall(WorkerNodes, mnesia, start, []),
-    timer:sleep(2000), % Give workers time to start up their empty mnesia
+handle_cast(_Msg, State) ->
+    {noreply, State}.
 
-    io:format("DB: Main node connecting to worker nodes: ~p~n", [WorkerNodes]),
-    case mnesia:change_config(extra_db_nodes, WorkerNodes) of
-        {ok, ConnectedNodes} ->
-            io:format("DB: Successfully connected to nodes: ~p~n", [ConnectedNodes]);
-        {error, ConnectReason} ->
-            io:format("DB: Error connecting to worker nodes: ~p~n", [ConnectReason])
-    end,
-    timer:sleep(1000), % Give time for schema to propagate
+% This is where we handle new nodes joining the cluster.
+handle_info({nodeup, Node, _NodeType}, State) ->
+    io:format("DB: Node ~p came up. Adding to Mnesia schema.~n", [Node]),
+    % Add the new node to the list of nodes with ram_copies of the tables.
+    mnesia:change_table_copy_type(bloon, Node, ram_copies),
+    mnesia:change_table_copy_type(monkey, Node, ram_copies),
+    {noreply, State};
 
-    io:format("DB: Creating tables...~n"),
-    create_tables(AllNodes),
+handle_info({nodedown, Node}, State) ->
+    io:format("DB: Node ~p went down. It will be removed from the schema if it reconnects.~n", [Node]),
+    % Mnesia handles the removal of the node from the cluster automatically.
+    % When it comes back up, the 'nodeup' handler will re-add it.
+    {noreply, State};
 
-    io:format("DB: Waiting for tables to be ready on all worker nodes...~n"),
-    {Replies, BadNodes} = rpc:multicall(WorkerNodes, mnesia, wait_for_tables, [[bloon, monkey], 20000]),
-    io:format("DB: Worker wait_for_tables replies: ~p~n", [Replies]),
-    io:format("DB: Worker nodes that failed RPC: ~p~n", [BadNodes]),
+handle_info(_Info, State) ->
+    {noreply, State}.
 
-    case lists:all(fun(ok) -> true; (_) -> false end, Replies) andalso (BadNodes == []) of
-        true ->
-            io:format("DB: All workers ready. Main node setup complete.~n"),
-            ok;
-        false ->
-            io:format("*ERROR* Some workers failed to get tables ready. Aborting.~n"),
-            {error, {worker_tables_not_ready, {Replies, BadNodes}}}
-    end.
+%% ===================================================================
+%% Internal Setup Functions
+%% ===================================================================
 
-%% @private
-%% Defines and creates all Mnesia tables.
-create_tables(AllNodes) ->
+create_tables() ->
     MainNode = node(),
-    WorkerNodes = AllNodes -- [MainNode],
-
-    % Define the table properties.
     BloonProps = [
         {disc_copies, [MainNode]},
-        {ram_copies, WorkerNodes},
         {attributes, record_info(fields, bloon)}
     ],
     MonkeyProps = [
         {disc_copies, [MainNode]},
-        {ram_copies, WorkerNodes},
         {attributes, record_info(fields, monkey)}
     ],
 
-    % Create bloon table. This is already a transaction.
     case mnesia:create_table(bloon, BloonProps) of
-        {atomic, ok} ->
-            io:format("DB: Table 'bloon' created successfully.~n");
-        {aborted, {already_exists, bloon}} ->
-            io:format("DB: Table 'bloon' already exists.~n");
-        {aborted, Reason1} ->
-            io:format("DB: Error creating 'bloon' table: ~p~n", [Reason1])
+        {atomic, ok} -> io:format("DB: Table 'bloon' created.~n");
+        {aborted, {already_exists, bloon}} -> io:format("DB: Table 'bloon' already exists.~n");
+        {aborted, R1} -> io:format("DB Error: creating 'bloon' table: ~p~n", [R1])
     end,
 
-    % Create monkey table. This is already a transaction.
     case mnesia:create_table(monkey, MonkeyProps) of
-        {atomic, ok} ->
-            io:format("DB: Table 'monkey' created successfully.~n");
-        {aborted, {already_exists, monkey}} ->
-            io:format("DB: Table 'monkey' already exists.~n");
-        {aborted, Reason2} ->
-            io:format("DB: Error creating 'monkey' table: ~p~n", [Reason2])
+        {atomic, ok} -> io:format("DB: Table 'monkey' created.~n");
+        {aborted, {already_exists, monkey}} -> io:format("DB: Table 'monkey' already exists.~n");
+        {aborted, R2} -> io:format("DB Error: creating 'monkey' table: ~p~n", [R2])
     end,
 
-    io:format("DB: Waiting for tables to be loaded on main node...~n"),
     mnesia:wait_for_tables([bloon, monkey], 20000).

@@ -1,63 +1,89 @@
 -module(main_server).
 -behaviour(gen_server).
--export([start_link/1, add_monkey/2, add_bloon/2]).
--export([init/1, handle_call/3, handle_cast/2]).
+
+-export([start_link/0, start_game/0]). % Updated exports
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -define(NUM_REGIONS, 4).
 -define(REGION_WIDTH, 50).
 
-% The state will now hold the actual PIDs of the remote regions.
--record(state, { region_pids = [] }).
+-record(state, {
+    num_regions :: integer(),
+    active_workers :: list(),
+    region_pids :: list() % List of PIDs for region_servers
+}).
 
-start_link(AllNodes) -> gen_server:start_link({local, ?MODULE}, ?MODULE, [AllNodes], []).
-add_monkey(Pos, Range) -> gen_server:cast(?MODULE, {add_monkey, Pos, Range}).
-add_bloon(Path, Health) -> gen_server:cast(?MODULE, {add_bloon, Path, Health}).
+% The supervisor calls this function
+start_link() ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-init([AllNodes]) ->
-    io:format("Main Server started. Waiting for all regions to report in...~n"),
-    
-    RegionNameNodes = lists:zipwith(
-        fun(Id, Node) -> {list_to_atom("region_" ++ integer_to_list(Id)), Node} end,
-        lists:seq(0, ?NUM_REGIONS - 1),
-        AllNodes
-    ),
+% The user calls this from the shell
+start_game() ->
+    gen_server:cast(?MODULE, start_game).
 
-    % Use our new helper function to reliably get the PIDs, retrying a few times.
-    RegionPids = [get_remote_pid(NameNode, 10) || NameNode <- RegionNameNodes],
+init([]) ->
+    io:format("Main Server started. Waiting for worker nodes to connect...~n"),
+    net_kernel:monitor_nodes(true),
+    {ok, #state{
+        num_regions = ?NUM_REGIONS,
+        active_workers = [],
+        region_pids = []
+    }}.
 
-    io:format("Main Server: All regions are up and running with PIDs: ~p~n", [RegionPids]),
-    {ok, #state{region_pids = RegionPids}}.
-
-
-handle_cast({add_monkey, Pos = {X, _Y}, Range}, State = #state{region_pids = Pids}) ->
-    RegionIndex = trunc(X / ?REGION_WIDTH),
-    RegionPid = lists:nth(RegionIndex + 1, Pids),
-    io:format("~p: Routing 'add_monkey' to region PID ~p~n", [node(), RegionPid]),
-    case is_pid(RegionPid) of
-        true -> gen_server:cast(RegionPid, {spawn_monkey, Pos, Range});
-        false -> io:format("~p: ERROR - Invalid PID for region ~p~n", [node(), RegionIndex])
+handle_cast(start_game, State = #state{active_workers = Workers}) ->
+    io:format("Main server: start_game command received.~n"),
+    if
+        length(Workers) < 1 ->
+            io:format("Cannot start game: No worker nodes have connected yet.~n");
+        true ->
+            spawn_initial_bloons(State)
     end,
     {noreply, State};
 
-handle_cast({add_bloon, Path = [{X, _Y} | _], Health}, State = #state{region_pids = Pids}) ->
-    RegionIndex = trunc(X / ?REGION_WIDTH),
-    RegionPid = lists:nth(RegionIndex + 1, Pids),
-    % This is now much simpler and correct. We already have the PIDs.
-    gen_server:cast(RegionPid, {spawn_bloon, Path, Health, Pids, RegionIndex}),
+handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_call(_Request, _From, State) -> {reply, ok, State}.
+handle_call(_Request, _From, State) ->
+    {reply, ok, State}.
+
+handle_info({nodeup, Node}, State = #state{active_workers = Workers}) ->
+    io:format("Node up: ~p~n", [Node]),
+    % Tell the DB process to add the new node to the Mnesia schema
+    db:add_node_to_schema(Node),
+    % Add the new node to our list of active workers
+    {noreply, State#state{active_workers = [Node | Workers]}};
+
+handle_info({nodedown, Node}, State = #state{active_workers = Workers}) ->
+    io:format("!!! Node down: ~p~n", [Node]),
+    % The recovery logic is now handled by region_servers restarting controllers.
+    % The main server only needs to update its list of active workers.
+    db:remove_node_from_schema(Node),
+    {noreply, State#state{active_workers = lists:delete(Node, Workers)}};
+
+handle_info(_Info, State) ->
+    {noreply, State}.
 
 
-%% --- HELPER FUNCTION ---
-get_remote_pid(_NameNode, 0) ->
-    erlang:error({could_not_find_remote_pid, _NameNode});
-get_remote_pid({Name, Node} = NameNode, Retries) ->
-    case rpc:call(Node, erlang, whereis, [Name]) of
-        undefined ->
-            io:format("Region ~p on node ~p not up yet, waiting...~n", [Name, Node]),
-            timer:sleep(500),
-            get_remote_pid(NameNode, Retries - 1);
-        Pid when is_pid(Pid) ->
-            Pid
-    end.
+%% ===================================================================
+%% Internal Functions
+%% ===================================================================
+
+spawn_initial_bloons(State = #state{active_workers = Workers}) ->
+    io:format("Spawning initial wave of bloons across ~p workers...~n", [length(Workers)]),
+    % Define a simple path for the bloons
+    Path = [{0, 100}, {50, 100}, {100, 100}, {150, 100}, {200, 100}],
+    Health = 10,
+
+    % Create 10 bloons and distribute them
+    lists:foreach(
+        fun(I) ->
+            BloonId = erlang:unique_integer(),
+            % Distribute bloons across workers in a round-robin fashion
+            WorkerNode = lists:nth(((I-1) rem length(Workers)) + 1, Workers),
+            io:format("Creating bloon ~p on node ~p~n", [BloonId, WorkerNode]),
+            % Create the bloon record directly in the database via an RPC call
+            rpc:call(WorkerNode, game, create_bloon_on_node, [BloonId, Path, Health])
+        end,
+        lists:seq(1, 10)
+    ),
+    io:format("Initial bloon wave spawned.~n").

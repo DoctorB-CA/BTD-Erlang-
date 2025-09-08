@@ -1,22 +1,28 @@
 -module(main_supervisor).
 -behaviour(supervisor).
--export([start_link/1, init/1]).
+-export([start_link/0, init/1]).
 
-% start_link now takes the list of worker nodes as an argument
-start_link(AllWorkerNodes) ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, [AllWorkerNodes]).
+start_link() ->
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-% init receives the worker nodes from start_link
-init([AllWorkerNodes]) ->
+init([]) ->
     io:format("Main Supervisor starting.~n"),
 
-    MainServerSpec = #{
-        id => main_server,
-        start => {main_server, start_link, [AllWorkerNodes]},
-        restart => permanent,
-        shutdown => 2000,
-        type => worker,
-        modules => [main_server]
-    },
+    % This supervisor now starts the database AND the main_server.
+    % It no longer needs to know about the worker nodes.
+    Children = [
+        #{
+            id => db,
+            start => {db, start_link, []},
+            restart => permanent,
+            type => worker
+        },
+        #{
+            id => main_server,
+            start => {main_server, start_link, []},
+            restart => permanent,
+            type => worker
+        }
+    ],
 
-    {ok, {{one_for_one, 5, 10}, [MainServerSpec]}}.
+    {ok, {{one_for_one, 5, 10}, Children}}.

@@ -1,0 +1,18 @@
+# Erlang build artifacts
+_build/
+
+# Mnesia data directories
+Mnesia.*/
+
+# Other files that shouldn't be in git
+*.zip
+*.lock
+*.odt
+how to run this project.txt
+LICENSE
+start_erlang.sh
+start_main.sh
+start_worker1.sh
+start_worker2.sh
+start_worker3.sh
+start_worker4.sh
