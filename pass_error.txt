@@ -1,20 +1,45 @@
-main:
-(main@132.72.81.60)1> Starting 'proj' application...
-Node 'main@132.72.81.60' is the main node. Starting main_supervisor.
-Main Supervisor starting.
-DB process starting on main node.
-DB: Table 'bloon' created.
-DB: Table 'monkey' created.
-Main Server started. Waiting for worker nodes to connect...
-===> Booted gproc
-===> Booted proj
+csestudent@119-lnx-18:~/Desktop/bar/Proj$ rebar3 compile
+===> Verifying dependencies...
+===> Analyzing applications...
+===> Compiling proj
+csestudent@119-lnx-18:~/Desktop/bar/Proj$ ./run.sh worker1
+Starting node: worker1@132.72.81.167 with rebar3 shell
+===> Verifying dependencies...
+===> Analyzing applications...
+===> Compiling proj
+Erlang/OTP 24 [erts-12.2.1] [source] [64-bit] [smp:12:12] [ds:12:12:10] [async-threads:1] [jit]
 
-for worker1 it conntiue forver:
-
-Eshell V12.2.1 (abort with ^G)
+Eshell V12.2.1  (abort with ^G)
 (worker1@132.72.81.167)1> Starting 'proj' application...
-Node 'worker1@132.72.81.167' is a worker node. Waiting for main server to assign work.
-===> Booted gproc
-===> Booted proj
+Node ''worker1@132.72.81.167'' is a worker node. Waiting for main server to assign work.
+=CRASH REPORT==== 8-Sep-2025::12:13:10.052258 ===
+  crasher:
+    initial call: application_master:init/4
+    pid: <0.171.0>
+    registered_name: []
+    exception exit: {bad_return,{{proj_app,start,[normal,[]]},ok}}
+      in function  application_master:init/4 (application_master.erl, line 142)
+    ancestors: [<0.170.0>] 
+    message_queue_len: 1
+    messages: [{'EXIT',<0.172.0>,normal}]
+    links: [<0.170.0>,<0.44.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 376
+    stack_size: 29
+    reductions: 187
+  neighbours:
 
-they booth stuck
+=INFO REPORT==== 8-Sep-2025::12:13:10.055371 ===
+    application: proj
+    exited: {bad_return,{{proj_app,start,[normal,[]]},ok}}
+    type: temporary
+
+===> Failed to boot proj for reason {bad_return,
+                                                {{proj_app,start,[normal,[]]},
+                                                 ok}}
+=INFO REPORT==== 8-Sep-2025::12:13:10.056383 ===
+    application: gproc
+    exited: stopped
+    type: temporary
