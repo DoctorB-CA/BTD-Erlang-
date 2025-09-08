@@ -1,0 +1,20 @@
+main:
+(main@132.72.81.60)1> Starting 'proj' application...
+Node 'main@132.72.81.60' is the main node. Starting main_supervisor.
+Main Supervisor starting.
+DB process starting on main node.
+DB: Table 'bloon' created.
+DB: Table 'monkey' created.
+Main Server started. Waiting for worker nodes to connect...
+===> Booted gproc
+===> Booted proj
+
+for worker1 it conntiue forver:
+
+Eshell V12.2.1 (abort with ^G)
+(worker1@132.72.81.167)1> Starting 'proj' application...
+Node 'worker1@132.72.81.167' is a worker node. Waiting for main server to assign work.
+===> Booted gproc
+===> Booted proj
+
+they booth stuck
