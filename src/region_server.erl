@@ -1,7 +1,7 @@
 -module(region_server).
 -behaviour(gen_server).
 
--include("dbr.hrl").
+-include("db.hrl").
 
 -export([start_link/3, init/1, handle_call/3, handle_cast/2]).
 
