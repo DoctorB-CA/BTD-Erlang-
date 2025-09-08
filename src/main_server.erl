@@ -30,12 +30,13 @@ init([]) ->
         region_pids = []
     }}.
 
-handle_cast(start_game, State = #state{active_workers = Workers}) ->
+handle_cast(start_game, State = #state{active_workers = Workers, num_regions = NumRegions}) ->
     io:format("Main server: start_game command received.~n"),
     if
         length(Workers) < 1 ->
             io:format("Cannot start game: No worker nodes have connected yet.~n");
         true ->
+            assign_regions_to_workers(Workers, NumRegions),
             spawn_initial_bloons(State)
     end,
     {noreply, State};
@@ -68,7 +69,18 @@ handle_info(_Info, State) ->
 %% Internal Functions
 %% ===================================================================
 
-spawn_initial_bloons(State = #state{active_workers = Workers}) ->
+assign_regions_to_workers(Workers, NumRegions) ->
+    io:format("Assigning ~p regions to ~p workers...~n", [NumRegions, length(Workers)]),
+    lists:foreach(
+        fun(RegionId) ->
+            WorkerNode = lists:nth((RegionId rem length(Workers)) + 1, Workers),
+            io:format("Starting region ~p on worker ~p~n", [RegionId, WorkerNode]),
+            rpc:call(WorkerNode, worker_supervisor, start_for_region, [RegionId])
+        end,
+        lists:seq(0, NumRegions - 1)
+    ).
+
+spawn_initial_bloons(#state{active_workers = Workers}) ->
     io:format("Spawning initial wave of bloons across ~p workers...~n", [length(Workers)]),
     % Define a simple path for the bloons
     Path = [{0, 100}, {50, 100}, {100, 100}, {150, 100}, {200, 100}],
