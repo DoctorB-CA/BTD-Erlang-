@@ -22,4 +22,4 @@ echo "Starting node: ${FULL_NAME} with rebar3 shell"
 # Run rebar3 shell.
 # --name: Sets the long name of the node, required for communication across different machines.
 # --setcookie: Sets the cookie for distributed communication.
-rebar3 shell --name ${FULL_NAME} --setcookie ${COOKIE}
+rebar3 shell --name ${FULL_NAME} --setcookie ${COOKIE} --apps proj --apps proj
