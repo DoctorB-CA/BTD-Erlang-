@@ -79,7 +79,7 @@ assign_regions_to_workers(Workers, NumRegions) ->
         fun(RegionId) ->
             WorkerNode = lists:nth((RegionId rem length(Workers)) + 1, Workers),
             io:format("Starting region ~p on worker ~p~n", [RegionId, WorkerNode]),
-            rpc:call(WorkerNode, worker_root_supervisor, start_worker_supervisor, [])
+            rpc:call(WorkerNode, worker_root_supervisor, start_worker_supervisor, [RegionId])
         end,
         lists:seq(0, NumRegions - 1)
     ).

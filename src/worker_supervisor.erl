@@ -1,17 +1,15 @@
 -module(worker_supervisor).
 -behaviour(supervisor).
 
--export([start_link/0, init/1]).
+-export([start_link/1, init/1]).
 
 -define(REGION_WIDTH, 50).
 -define(TOTAL_REGIONS, 4). % Assuming 4 regions as before
 
-start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+start_link(RegionId) ->
+    supervisor:start_link({local, name_for_region(RegionId)}, ?MODULE, [RegionId]).
 
-init([]) ->
-    % The worker supervisor now determines its own region ID based on its node name.
-    RegionId = get_region_id_from_node(node()),
+init([RegionId]) ->
     io:format("Worker Supervisor starting on node ~p for region ~p~n", [node(), RegionId]),
     
     % This supervisor now only starts ONE region server.
@@ -24,12 +22,6 @@ init([]) ->
     
     {ok, {#{strategy => one_for_one}, [RegionSpec]}}.
 
-%% Helper function to parse the node name 'worker1@host' -> 0
-get_region_id_from_node(Node) ->
-    [WorkerName | _] = string:split(atom_to_list(Node), "@"),
-    % "worker1" -> "1"
-    IndexStr = string:trim(WorkerName, leading, "worker"),
-    % "1" -> 1
-    Index = list_to_integer(IndexStr),
-    % Convert 1-based index to 0-based region ID
-    Index - 1.
+%% Helper function to create a unique registered name for each supervisor
+name_for_region(RegionId) ->
+    list_to_atom("worker_supervisor_" ++ integer_to_list(RegionId)).
