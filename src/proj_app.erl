@@ -1,6 +1,8 @@
 -module(proj_app).
 -behaviour(application).
 
+-include("db.hrl").
+
 -export([start/2, stop/1]).
 
 %% ===================================================================
@@ -11,7 +13,7 @@
 start(_StartType, _StartArgs) ->
     io:format("Starting 'proj' application...~n"),
     % Decide which supervisor to start based on the node's name.
-    case is_main_node(node()) of
+    case node() of
         ?MAIN_NODE ->
             io:format("Node '~p' is the main node. Starting main_supervisor.~n", [node()]),
             proj:start_main_supervisor();
@@ -26,18 +28,6 @@ start(_StartType, _StartArgs) ->
                     {error, could_not_connect_to_main_node}
             end
     end.
-    end.
 
 stop(_State) ->
     ok.
-
-%% ===================================================================
-%% Internal Functions
-%% ===================================================================
-
-% Check if the current node is the main node by looking at its name.
-is_main_node(Node) ->
-    case string:split(atom_to_list(Node), "@") of
-        ["main", _Host] -> true;
-        _ -> false
-    end.

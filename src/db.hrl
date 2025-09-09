@@ -1,3 +1,5 @@
+-define(MAIN_NODE, 'main@132.72.81.60').
+
 -record(bloon, {
     id,         % Unique ID for the bloon (primary key)
     health,     % Current health
