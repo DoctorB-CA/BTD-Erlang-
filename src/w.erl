@@ -1,5 +1,5 @@
 -module(w).
--export([start/0]).
+-export([start/0, init/0]).
 
 -include_lib("wx/include/wx.hrl").
 -include("dbr.hrl").

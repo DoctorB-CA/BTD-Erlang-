@@ -25,7 +25,10 @@ handle_call({find_bloon, MonkeyPos, Range}, _From, State = #region_state{id = My
     ]),
     
     % Fetch bloons from the database for all relevant regions
-    BloonRecords = db:get_bloons_in_regions(RegionsToScan),
+    BloonRecords = case db:get_bloons_in_regions(RegionsToScan) of
+        {atomic, Records} -> Records;
+        _ -> []
+    end,
     
     % Find the closest bloon from the fetched records
     Closest = find_closest_bloon(MonkeyPos, Range, BloonRecords, none),
