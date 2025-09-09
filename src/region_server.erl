@@ -38,13 +38,13 @@ handle_call({find_bloon, MonkeyPos, Range}, _From, State = #region_state{id = My
 
 handle_call(ping, _From, State) -> {reply, self(), State}.
 
-handle_cast({spawn_monkey, Pos, Range}, State = #region_state{id = RegionId}) ->
-    io:format("*DEBUG* ~p: Spawning monkey.~n", [node()]),
-    monkey:start_link(Pos, Range, self(), RegionId),
+handle_cast({spawn_monkey, Pos, Range, Type}, State = #region_state{id = RegionId}) ->
+    io:format("*DEBUG* ~p: Spawning monkey of type ~p.~n", [node(), Type]),
+    monkey:start_link(Pos, Range, self(), RegionId, Type),
     {noreply, State};
 
-handle_cast({spawn_bloon, Path, Health, AllRegionPids, RegionId}, State) ->
-    bloon:start_link(Path, Health, self(), AllRegionPids, RegionId),
+handle_cast({spawn_bloon, Path, Type, Health, AllRegionPids, RegionId}, State) ->
+    bloon:start_link(Path, Type, Health, self(), AllRegionPids, RegionId),
     {noreply, State}.
 
 % Helper functions

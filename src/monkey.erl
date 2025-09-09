@@ -4,22 +4,22 @@
 -include("dbr.hrl").
 
 % EXPORTING THE CORRECT /4 ARITY FUNCTIONS
--export([start_link/4]).
+-export([start_link/5]).
 -export([init/1, callback_mode/0, searching/3, attacking/3]).
 
 -define(SCAN_INTERVAL, 100).
 -define(ATTACK_COOLDOWN, 1000).
 -record(data, {pos, range, region_pid}).
 
-start_link(Pos, Range, RegionPid, RegionId) ->
-    gen_statem:start_link(?MODULE, [Pos, Range, RegionPid, RegionId], []).
+start_link(Pos, Range, RegionPid, RegionId, Type) ->
+    gen_statem:start_link(?MODULE, [Pos, Range, RegionPid, RegionId, Type], []).
 
 callback_mode() -> state_functions.
 
-init([Pos, Range, RegionPid, RegionId]) ->
+init([Pos, Range, RegionPid, RegionId, Type]) ->
     io:format("Monkey starting at ~p on node ~p~n", [Pos, node()]),
     MonkeyId = erlang:make_ref(),
-    MonkeyRecord = #monkey{id=MonkeyId, pos=Pos, range=Range, region_id=RegionId},
+    MonkeyRecord = #monkey{id=MonkeyId, pos=Pos, range=Range, region_id=RegionId, type=Type},
     db:write_monkey(MonkeyRecord),
     Data = #data{pos=Pos, range=Range, region_pid=RegionPid},
     {ok, searching, Data, {state_timeout, 0, scan}}.

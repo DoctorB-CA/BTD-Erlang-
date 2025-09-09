@@ -1,17 +1,22 @@
 -module(main_server).
 -behaviour(gen_server).
--export([start_link/1, add_monkey/2, add_bloon/2]).
--export([init/1, handle_call/3, handle_cast/2]).
+
+-export([start_link/1, add_monkey/3, add_bloon/2, get_game_state/0]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
+
+-include("dbr.hrl").
+-include_lib("wx/include/wx.hrl").
 
 -define(NUM_REGIONS, 4).
--define(REGION_WIDTH, 50).
+-define(REGION_WIDTH, 200).
 
 % The state will now hold the actual PIDs of the remote regions.
 -record(state, { region_pids = [] }).
 
 start_link(AllNodes) -> gen_server:start_link({local, ?MODULE}, ?MODULE, [AllNodes], []).
-add_monkey(Pos, Range) -> gen_server:cast(?MODULE, {add_monkey, Pos, Range}).
-add_bloon(Path, Health) -> gen_server:cast(?MODULE, {add_bloon, Path, Health}).
+add_monkey(Pos, Range, Type) -> gen_server:cast(?MODULE, {add_monkey, Pos, Range, Type}).
+add_bloon(Path, Type) -> gen_server:cast(?MODULE, {add_bloon, Path, Type}).
+get_game_state() -> gen_server:call(?MODULE, get_game_state).
 
 init([AllNodes]) ->
     io:format("Main Server started. Waiting for all regions to report in...~n"),
@@ -29,27 +34,42 @@ init([AllNodes]) ->
     {ok, #state{region_pids = RegionPids}}.
 
 
-handle_cast({add_monkey, Pos = {X, _Y}, Range}, State = #state{region_pids = Pids}) ->
+handle_cast({add_monkey, Pos = {X, _Y}, Range, Type}, State = #state{region_pids = Pids}) ->
     RegionIndex = trunc(X / ?REGION_WIDTH),
     RegionPid = lists:nth(RegionIndex + 1, Pids),
     io:format("~p: Routing 'add_monkey' to region PID ~p~n", [node(), RegionPid]),
     case is_pid(RegionPid) of
-        true -> gen_server:cast(RegionPid, {spawn_monkey, Pos, Range});
+        true -> gen_server:cast(RegionPid, {spawn_monkey, Pos, Range, Type});
         false -> io:format("~p: ERROR - Invalid PID for region ~p~n", [node(), RegionIndex])
     end,
     {noreply, State};
 
-handle_cast({add_bloon, Path = [{X, _Y} | _], Health}, State = #state{region_pids = Pids}) ->
+handle_cast({add_bloon, Path = [{X, _Y} | _], Type}, State = #state{region_pids = Pids}) ->
     RegionIndex = trunc(X / ?REGION_WIDTH),
     RegionPid = lists:nth(RegionIndex + 1, Pids),
-    % This is now much simpler and correct. We already have the PIDs.
-    gen_server:cast(RegionPid, {spawn_bloon, Path, Health, Pids, RegionIndex}),
-    {noreply, State}.
+    Health = get_health_from_type(Type),
+    gen_server:cast(RegionPid, {spawn_bloon, Path, Type, Health, Pids, RegionIndex}),
+    {noreply, State};
+handle_cast(_Request, State) -> {noreply, State}.
 
+handle_call(get_game_state, _From, State) ->
+    {ok, Monkeys} = db:get_all_monkeys(),
+    {ok, Bloons} = db:get_all_bloons(),
+    Reply = #{monkeys => Monkeys, bloons => Bloons},
+    {reply, Reply, State};
 handle_call(_Request, _From, State) -> {reply, ok, State}.
 
+handle_info(_Info, State) -> {noreply, State}.
 
-%% --- HELPER FUNCTION ---
+
+%% --- HELPER FUNCTIONS ---
+
+get_health_from_type(black_bloon) -> 4;
+get_health_from_type(green_bloon) -> 3;
+get_health_from_type(blue_bloon) -> 2;
+get_health_from_type(red_bloon) -> 1;
+get_health_from_type(_) -> 1.
+
 get_remote_pid(_NameNode, 0) ->
     erlang:error({could_not_find_remote_pid, _NameNode});
 get_remote_pid({Name, Node} = NameNode, Retries) ->
