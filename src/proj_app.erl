@@ -23,10 +23,15 @@ start(_StartType, _StartArgs) ->
                 true ->
                     io:format("Successfully connected to main node. Starting Mnesia...~n"),
                     mnesia:start(),
-                    % The main node will now orchestrate the table waiting.
-                    % The worker just needs to start its root supervisor.
-                    io:format("Mnesia started. Starting worker_root_supervisor.~n"),
-                    worker_root_supervisor:start_link();
+                    io:format("Mnesia started. Waiting for local tables to be ready...~n"),
+                    case db:wait_for_local_tables() of
+                        ok ->
+                            io:format("Local tables are ready. Starting worker_root_supervisor.~n"),
+                            worker_root_supervisor:start_link();
+                        {error, Reason} ->
+                            io:format("Error waiting for tables: ~p. Aborting.~n", [Reason]),
+                            {error, {tables_not_ready, Reason}}
+                    end;
                 false ->
                     io:format("Error: Could not connect to main node ~p. Aborting.~n", [?MAIN_NODE]),
                     {error, could_not_connect_to_main_node}

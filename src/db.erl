@@ -60,22 +60,11 @@ delete_monkey(MonkeyId) ->
 %% @doc Adds a new node to the Mnesia schema and ensures its tables are ready.
 add_node_to_schema(Node) ->
     io:format("DB: Adding node ~p to Mnesia schema.~n", [Node]),
-
-    % Add ram_copies of the tables to the new node.
+    % Simply tell Mnesia to start copying the tables.
+    % The worker node is now responsible for waiting until they are ready.
     mnesia:add_table_copy(bloon, Node, ram_copies),
     mnesia:add_table_copy(monkey, Node, ram_copies),
-
-    % This is the crucial step: make a blocking RPC call to the remote node
-    % and tell it to wait for its own tables to be ready.
-    io:format("DB: Waiting for tables to be ready on remote node ~p...~n", [Node]),
-    case rpc:call(Node, db, wait_for_local_tables, []) of
-        ok ->
-            io:format("DB: Remote node ~p confirmed tables are ready.~n", [Node]),
-            ok;
-        {badrpc, Reason} ->
-            io:format("DB Error: RPC failed while waiting for tables on node ~p: ~p~n", [Node, Reason]),
-            {error, {rpc_failed, Reason}}
-    end.
+    ok.
 
 %% @doc Blocks until the core application tables are loaded on the local node.
 wait_for_local_tables() ->
