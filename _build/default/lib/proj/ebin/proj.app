@@ -6,6 +6,7 @@
               {applications,[kernel,stdlib,gproc]},
               {env,[]},
               {modules,[arrow,bloon,db,game,main_server,main_supervisor,
-                        monkey,proj_app,region_server,w,worker_supervisor]},
+                        monkey,proj_app,region_server,w,
+                        worker_root_supervisor,worker_supervisor]},
               {licenses,["Apache 2.0"]},
               {links,[]}]}.
