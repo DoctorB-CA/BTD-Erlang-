@@ -23,6 +23,8 @@ start(_StartType, _StartArgs) ->
                 true ->
                     io:format("Successfully connected to main node. Starting Mnesia...~n"),
                     mnesia:start(),
+                    % The main node will now orchestrate the table waiting.
+                    % The worker just needs to start its root supervisor.
                     io:format("Mnesia started. Starting worker_root_supervisor.~n"),
                     worker_root_supervisor:start_link();
                 false ->

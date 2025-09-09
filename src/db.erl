@@ -5,7 +5,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -export([write_bloon/1, delete_bloon/1, write_monkey/1, delete_monkey/1]).
--export([get_bloons_in_regions/1]).
+-export([get_bloons_in_regions/1, wait_for_local_tables/0]).
 -export([add_node_to_schema/1, remove_node_from_schema/1]).
 
 -include("db.hrl").
@@ -57,28 +57,39 @@ delete_monkey(MonkeyId) ->
     F = fun() -> mnesia:delete(Oid) end,
     mnesia:transaction(F).
 
-%% @doc Adds a new node to the Mnesia schema and sets up table replicas.
+%% @doc Adds a new node to the Mnesia schema and ensures its tables are ready.
 add_node_to_schema(Node) ->
     io:format("DB: Adding node ~p to Mnesia schema.~n", [Node]),
 
     % Add ram_copies of the tables to the new node.
-    % Mnesia will handle adding the node to the schema implicitly.
     mnesia:add_table_copy(bloon, Node, ram_copies),
     mnesia:add_table_copy(monkey, Node, ram_copies),
 
-    % Wait for the tables to be created and ready on the remote node.
-    % This is a blocking call, which is what we want here.
+    % This is the crucial step: make a blocking RPC call to the remote node
+    % and tell it to wait for its own tables to be ready.
+    io:format("DB: Waiting for tables to be ready on remote node ~p...~n", [Node]),
+    case rpc:call(Node, db, wait_for_local_tables, []) of
+        ok ->
+            io:format("DB: Remote node ~p confirmed tables are ready.~n", [Node]),
+            ok;
+        {badrpc, Reason} ->
+            io:format("DB Error: RPC failed while waiting for tables on node ~p: ~p~n", [Node, Reason]),
+            {error, {rpc_failed, Reason}}
+    end.
+
+%% @doc Blocks until the core application tables are loaded on the local node.
+wait_for_local_tables() ->
     Tables = [bloon, monkey],
-    io:format("DB: Waiting for tables ~p to be ready on node ~p...~n", [Tables, Node]),
+    io:format("DB: Waiting for local tables ~p to be loaded...~n", [Tables]),
     case mnesia:wait_for_tables(Tables, 20000) of
         ok ->
-            io:format("DB: Tables are ready on node ~p.~n", [Node]),
+            io:format("DB: Local tables are ready.~n"),
             ok;
         {timeout, _} ->
-            io:format("DB Error: timed out waiting for tables on node ~p.~n", [Node]),
+            io:format("DB Error: timed out waiting for local tables.~n"),
             {error, timeout};
         {error, Reason} ->
-            io:format("DB Error: waiting for tables on node ~p: ~p~n", [Node, Reason]),
+            io:format("DB Error: waiting for local tables: ~p~n", [Reason]),
             {error, Reason}
     end.
 
