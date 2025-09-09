@@ -6,6 +6,7 @@
 
 -export([write_bloon/1, delete_bloon/1, write_monkey/1, delete_monkey/1]).
 -export([get_bloons_in_regions/1]).
+-export([add_node_to_schema/1, remove_node_from_schema/1]).
 
 -include("db.hrl").
 
@@ -56,6 +57,27 @@ delete_monkey(MonkeyId) ->
     F = fun() -> mnesia:delete(Oid) end,
     mnesia:transaction(F).
 
+%% @doc Adds a new node to the Mnesia schema and sets up table replicas.
+add_node_to_schema(Node) ->
+    io:format("DB: Adding node ~p to Mnesia schema.~n", [Node]),
+    % The result of this call is often {atomic, ok} or {aborted, ...}
+    Result = mnesia:change_table_copy_type(schema, Node, ram_copies),
+    io:format("DB: Result of adding node ~p to schema: ~p~n", [Node, Result]),
+
+    % Now add ram_copies of the tables to the new node.
+    % This might be redundant if change_table_copy_type implies it, but it's safer to be explicit.
+    mnesia:add_table_copy(bloon, Node, ram_copies),
+    mnesia:add_table_copy(monkey, Node, ram_copies),
+    ok.
+
+%% @doc Removes a node from the Mnesia schema.
+remove_node_from_schema(Node) ->
+    io:format("DB: Removing node ~p from Mnesia schema.~n", [Node]),
+    % This will remove the table replicas from the downed node.
+    mnesia:del_table_copy(bloon, Node),
+    mnesia:del_table_copy(monkey, Node),
+    ok.
+
 %% ===================================================================
 %% gen_server callbacks
 %% ===================================================================
@@ -85,15 +107,12 @@ handle_cast(_Msg, State) ->
 % This is where we handle new nodes joining the cluster.
 handle_info({nodeup, Node, _NodeType}, State) ->
     io:format("DB: Node ~p came up. Adding to Mnesia schema.~n", [Node]),
-    % Add the new node to the list of nodes with ram_copies of the tables.
-    mnesia:change_table_copy_type(bloon, Node, ram_copies),
-    mnesia:change_table_copy_type(monkey, Node, ram_copies),
+    add_node_to_schema(Node),
     {noreply, State};
 
 handle_info({nodedown, Node}, State) ->
     io:format("DB: Node ~p went down. It will be removed from the schema if it reconnects.~n", [Node]),
-    % Mnesia handles the removal of the node from the cluster automatically.
-    % When it comes back up, the 'nodeup' handler will re-add it.
+    remove_node_from_schema(Node),
     {noreply, State};
 
 handle_info(_Info, State) ->
