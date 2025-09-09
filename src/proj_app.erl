@@ -21,7 +21,9 @@ start(_StartType, _StartArgs) ->
             io:format("Node '~p' is a worker node. Trying to connect to main node...~n", [node()]),
             case net_kernel:connect_node(?MAIN_NODE) of
                 true ->
-                    io:format("Successfully connected to main node. Starting worker_root_supervisor.~n"),
+                    io:format("Successfully connected to main node. Starting Mnesia...~n"),
+                    mnesia:start(),
+                    io:format("Mnesia started. Starting worker_root_supervisor.~n"),
                     worker_root_supervisor:start_link();
                 false ->
                     io:format("Error: Could not connect to main node ~p. Aborting.~n", [?MAIN_NODE]),
