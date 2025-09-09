@@ -2,6 +2,7 @@
 -behaviour(gen_server).
 
 -export([start/0, init/1, handle_call/3, handle_cast/2, handle_info/2]).
+-export([gui/1]). % Export the new GUI entry point
 
 -include_lib("wx/include/wx.hrl").
 -include("dbr.hrl").
@@ -18,8 +19,7 @@
 -define(TICK_INTERVAL, 100). % Refresh rate in milliseconds
 
 -record(state, {
-    frame,
-    canvas,
+    gui_pid, % To hold the PID of the GUI process
     bitmaps,
     current_brush = unselected,
     monkeys = [],
@@ -28,7 +28,7 @@
 }).
 
 %% ===================================================================
-%% Public API
+%% Public API & Server Start
 %% ===================================================================
 start() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
@@ -37,15 +37,21 @@ start() ->
 %% gen_server callbacks
 %% ===================================================================
 init([]) ->
-    spawn(fun() -> gui_init() end),
-    {ok, #state{}}.
+    % Spawn the dedicated GUI process, passing our (the server's) PID
+    GuiPid = spawn_link(fun() -> gui(self()) end),
+    timer:send_after(?TICK_INTERVAL, self(), tick),
+    {ok, #state{gui_pid = GuiPid}}.
 
 handle_call(get_state, _From, State) ->
-    {reply, State, State}.
+    {reply, State, State};
+handle_call({init_gui, Bitmaps, Path}, _From, State) ->
+    % The GUI process tells us it's ready and gives us the static data
+    {reply, ok, State#state{bitmaps = Bitmaps, path = Path}}.
 
 handle_cast({set_brush, Brush}, State) ->
     {noreply, State#state{current_brush = Brush}};
 handle_cast({place_monkey, Pos}, State = #state{current_brush = Brush}) ->
+    io:format("Server received place_monkey at ~p with brush ~p~n", [Pos, Brush]),
     if Brush /= unselected ->
            main_server:add_monkey(Pos, 100, Brush);
        true ->
@@ -53,29 +59,28 @@ handle_cast({place_monkey, Pos}, State = #state{current_brush = Brush}) ->
     end,
     {noreply, State#state{current_brush = unselected}};
 handle_cast(start_wave, State = #state{path = Path}) ->
+    io:format("Server received start_wave~n", []),
     main_server:add_bloon(Path, red_bloon),
     {noreply, State}.
 
-handle_info(tick, State = #state{canvas = Canvas}) ->
+handle_info(tick, State = #state{gui_pid = GuiPid}) ->
     NewState = case main_server:get_game_state() of
                    #{monkeys := Monkeys, bloons := Bloons} ->
                        State#state{monkeys = Monkeys, bloons = Bloons};
                    _ ->
                        State
                end,
-    wxWindow:refresh(Canvas),
+    % Tell the GUI process to refresh
+    GuiPid ! refresh,
     timer:send_after(?TICK_INTERVAL, self(), tick),
     {noreply, NewState};
-handle_info(#'wx'{obj=Frame, event=#'wxClose'{}}, State = #state{frame=Frame}) ->
-    wxFrame:destroy(Frame),
-    {stop, normal, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
 %% ===================================================================
-%% GUI Initialization and Drawing (runs in a separate process)
+%% GUI Process (runs completely separately from the gen_server)
 %% ===================================================================
-gui_init() ->
+gui(ServerPid) ->
     wx:new(),
     wxImage:initStandardHandlers(),
 
@@ -93,9 +98,12 @@ gui_init() ->
     Bitmaps = #{
         ground_monkey => GroundBitmap, fire_monkey => FireBitmap, air_monkey => AirBitmap, water_monkey => WaterBitmap,
         map => MapBitmap,
-        red_bloon => RedBalloonBitmap, blue_bloon => BlueBalloonBitmap, green_bloon => GreenBalloonBitmap, black_bloon => BlackBalloonBitmap
+        red_bloon => RedBalloonBitmap, blue_bloon => BlueBalloonBitmap, green_geo_bloon => GreenBalloonBitmap, black_bloon => BlackBalloonBitmap
     },
     Path = [{10, 100},{20, 100},{30, 100},{40, 100},{50, 100},{60, 100}, {70, 110}, {80, 100}, {120, 90}, {180, 100}],
+
+    % Tell the server we are ready and give it the static data
+    gen_server:call(ServerPid, {init_gui, Bitmaps, Path}),
 
     Frame = wxFrame:new(wx:null(), ?wxID_ANY, "BTD-Erlang"),
     BackgroundPanel = wxPanel:new(Frame),
@@ -122,10 +130,8 @@ gui_init() ->
     wxPanel:setSizer(BackgroundPanel, PanelSizer),
     wxFrame:setSizerAndFit(Frame, PanelSizer),
 
-    gen_server:call(?SERVER, {init_gui, Frame, CanvasPanel, Bitmaps, Path}),
-
-    wxFrame:connect(Frame, close_window, [{userData, self()}]),
-    wxPanel:connect(CanvasPanel, paint, [{callback, fun on_paint/2}]),
+    wxFrame:connect(Frame, close_window),
+    wxPanel:connect(CanvasPanel, paint, [{callback, fun(Ev, _) -> on_paint(Ev, ServerPid) end}]),
     wxPanel:connect(CanvasPanel, left_down),
     wxButton:connect(StartWaveButton, command_button_clicked),
     wxStaticBitmap:connect(GroundButton, left_down, [{userData, ground_monkey}]),
@@ -134,16 +140,40 @@ gui_init() ->
     wxStaticBitmap:connect(WaterButton, left_down, [{userData, water_monkey}]),
 
     wxFrame:show(Frame),
-    timer:send_after(?TICK_INTERVAL, ?SERVER, tick).
+    gui_loop(ServerPid, Frame, CanvasPanel).
 
-on_paint(#wx{obj = Canvas}, _Ev) ->
-    State = gen_server:call(?SERVER, get_state),
+gui_loop(ServerPid, Frame, Canvas) ->
+    receive
+        refresh ->
+            wxWindow:refresh(Canvas),
+            gui_loop(ServerPid, Frame, Canvas);
+        #'wx'{event=#'wxMouse'{type=left_down, x=X, y=Y}} ->
+            gen_server:cast(ServerPid, {place_monkey, {X, Y}}),
+            gui_loop(ServerPid, Frame, Canvas);
+        #'wx'{event=#'wxCommand'{type=command_button_clicked}} ->
+            gen_server:cast(ServerPid, start_wave),
+            gui_loop(ServerPid, Frame, Canvas);
+        #'wx'{userData = Brush} ->
+            gen_server:cast(ServerPid, {set_brush, Brush}),
+            gui_loop(ServerPid, Frame, Canvas);
+        #'wx'{obj=Frame, event=#'wxClose'{}} ->
+            wxFrame:destroy(Frame);
+        _Other ->
+            gui_loop(ServerPid, Frame, Canvas)
+    end.
+
+on_paint(#wx{obj = Canvas}, ServerPid) ->
+    State = gen_server:call(ServerPid, get_state),
     #state{bitmaps = Bitmaps, monkeys = Monkeys, bloons = Bloons, path = Path} = State,
     DC = wxBufferedPaintDC:new(Canvas),
-    wxDC:drawBitmap(DC, maps:get(map, Bitmaps), {0, 0}),
-    draw_path(DC, Path),
-    draw_monkeys(DC, Monkeys, Bitmaps),
-    draw_bloons(DC, Bloons, Bitmaps),
+    case Bitmaps of
+        undefined -> ok;
+        _ ->
+            wxDC:drawBitmap(DC, maps:get(map, Bitmaps), {0, 0}),
+            draw_path(DC, Path),
+            draw_monkeys(DC, Monkeys, Bitmaps),
+            draw_bloons(DC, Bloons, Bitmaps)
+    end,
     wxBufferedPaintDC:destroy(DC).
 
 draw_path(DC, Path) ->
@@ -161,7 +191,7 @@ draw_monkeys(DC, Monkeys, Bitmaps) ->
 draw_bloons(DC, Bloons, Bitmaps) ->
     lists:foreach(
         fun(#bloon{path = Path, path_index = PathIdx, type = Type}) ->
-            if PathIdx =< length(Path) ->
+            if PathIdx =< length(Path) andalso Path /= undefined ->
                    case maps:find(Type, Bitmaps) of
                        {ok, Bitmap} ->
                            {X, Y} = lists:nth(PathIdx, Path),

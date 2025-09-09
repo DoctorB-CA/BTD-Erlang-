@@ -1,1 +1,1 @@
-Version GUI.1.0.5
+Version GUI.1.0.6
