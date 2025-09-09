@@ -60,15 +60,27 @@ delete_monkey(MonkeyId) ->
 %% @doc Adds a new node to the Mnesia schema and sets up table replicas.
 add_node_to_schema(Node) ->
     io:format("DB: Adding node ~p to Mnesia schema.~n", [Node]),
-    % The result of this call is often {atomic, ok} or {aborted, ...}
-    Result = mnesia:change_table_copy_type(schema, Node, ram_copies),
-    io:format("DB: Result of adding node ~p to schema: ~p~n", [Node, Result]),
 
-    % Now add ram_copies of the tables to the new node.
-    % This might be redundant if change_table_copy_type implies it, but it's safer to be explicit.
+    % Add ram_copies of the tables to the new node.
+    % Mnesia will handle adding the node to the schema implicitly.
     mnesia:add_table_copy(bloon, Node, ram_copies),
     mnesia:add_table_copy(monkey, Node, ram_copies),
-    ok.
+
+    % Wait for the tables to be created and ready on the remote node.
+    % This is a blocking call, which is what we want here.
+    Tables = [bloon, monkey],
+    io:format("DB: Waiting for tables ~p to be ready on node ~p...~n", [Tables, Node]),
+    case mnesia:wait_for_tables(Tables, 20000) of
+        ok ->
+            io:format("DB: Tables are ready on node ~p.~n", [Node]),
+            ok;
+        {timeout, _} ->
+            io:format("DB Error: timed out waiting for tables on node ~p.~n", [Node]),
+            {error, timeout};
+        {error, Reason} ->
+            io:format("DB Error: waiting for tables on node ~p: ~p~n", [Node, Reason]),
+            {error, Reason}
+    end.
 
 %% @doc Removes a node from the Mnesia schema.
 remove_node_from_schema(Node) ->

@@ -49,10 +49,14 @@ handle_call(_Request, _From, State) ->
 
 handle_info({nodeup, Node}, State = #state{active_workers = Workers}) ->
     io:format("Node up: ~p~n", [Node]),
-    % Tell the DB process to add the new node to the Mnesia schema
-    db:add_node_to_schema(Node),
-    % Add the new node to our list of active workers
-    {noreply, State#state{active_workers = [Node | Workers]}};
+    case db:add_node_to_schema(Node) of
+        ok ->
+            io:format("Successfully added node ~p to schema. It is now an active worker.~n", [Node]),
+            {noreply, State#state{active_workers = [Node | Workers]}};
+        {error, Reason} ->
+            io:format("Error adding node ~p to schema: ~p. It will not be used as a worker.~n", [Node, Reason]),
+            {noreply, State}
+    end;
 
 handle_info({nodedown, Node}, State = #state{active_workers = Workers}) ->
     io:format("!!! Node down: ~p~n", [Node]),
