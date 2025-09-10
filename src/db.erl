@@ -1,12 +1,14 @@
 -module(db).
 -behaviour(gen_server).
 
+%% API
 -export([start_link/0]).
--export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
-
 -export([write_bloon/1, delete_bloon/1, write_monkey/1, delete_monkey/1]).
 -export([get_bloons_in_regions/1, wait_for_local_tables/0]).
 -export([add_node_to_schema/1, remove_node_from_schema/1]).
+
+%% gen_server callbacks
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include("db.hrl").
 
@@ -57,28 +59,53 @@ delete_monkey(MonkeyId) ->
     F = fun() -> mnesia:delete(Oid) end,
     mnesia:transaction(F).
 
-%% @doc Adds a new node to the Mnesia schema and ensures its tables are ready.
+%% @doc Adds a new node to the Mnesia schema, making it part of the cluster.
+%% This function is robust against race conditions where the node has just
+%% connected but is not yet fully recognized by Mnesia.
 add_node_to_schema(Node) ->
-    io:format("DB: Adding node ~p to Mnesia schema.~n", [Node]),
-    % Simply tell Mnesia to start copying the tables.
-    % The worker node is now responsible for waiting until they are ready.
-    mnesia:add_table_copy(bloon, Node, ram_copies),
-    mnesia:add_table_copy(monkey, Node, ram_copies),
-    ok.
+    add_node_to_schema_retry(Node, 5). % 5 retries, 1 second apart
+
+add_node_to_schema_retry(_Node, 0) ->
+    io:format("DB Error: Failed to add node after multiple retries.~n"),
+    {error, max_retries_exceeded};
+add_node_to_schema_retry(Node, Retries) ->
+    io:format("DB: Attempting to add node ~p to schema. Retries left: ~p~n", [Node, Retries-1]),
+    % The key is to first make the new node part of the schema management.
+    % This operation itself can fail with {no_exists, Node} if Mnesia hasn't
+    % yet processed the net_kernel notification about the new node.
+    case mnesia:add_table_copy(schema, Node, disc_copies) of
+        {atomic, ok} ->
+            io:format("DB: Node ~p is now part of the schema. Adding application tables.~n", [Node]),
+            % Now that the node is aware of schema changes, we can add our tables.
+            % These operations should now find the node.
+            mnesia:add_table_copy(bloon, Node, ram_copies),
+            mnesia:add_table_copy(monkey, Node, ram_copies),
+            ok;
+        {aborted, {no_exists, Node}} ->
+            io:format("DB Warn: Mnesia doesn't see node ~p yet. Retrying...~n", [Node]),
+            timer:sleep(1000),
+            add_node_to_schema_retry(Node, Retries - 1);
+        {aborted, Reason} ->
+            io:format("DB Error: Could not add node ~p to schema: ~p~n", [Node, Reason]),
+            {error, Reason}
+    end.
 
 %% @doc Blocks until the core application tables are loaded on the local node.
 wait_for_local_tables() ->
+    wait_for_local_tables(30000). % 30 seconds timeout
+
+wait_for_local_tables(Timeout) ->
     Tables = [bloon, monkey],
     io:format("DB: Waiting for local tables ~p to be loaded...~n", [Tables]),
-    case mnesia:wait_for_tables(Tables, 20000) of
+    case mnesia:wait_for_tables(Tables, Timeout) of
         ok ->
-            io:format("DB: Local tables are ready.~n"),
+            io:format("DB: All local tables are ready.~n"),
             ok;
         {timeout, _} ->
             io:format("DB Error: timed out waiting for local tables.~n"),
             {error, timeout};
         {error, Reason} ->
-            io:format("DB Error: waiting for local tables: ~p~n", [Reason]),
+            io:format("DB Error: Mnesia error while waiting for tables: ~p~n", [Reason]),
             {error, Reason}
     end.
 
