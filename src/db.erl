@@ -69,16 +69,13 @@ add_node_to_schema_retry(_Node, 0) ->
     io:format("DB Error: Failed to add node after multiple retries.~n"),
     {error, max_retries_exceeded};
 add_node_to_schema_retry(Node, Retries) ->
-    io:format("DB: Attempting to add node ~p to schema. Retries left: ~p~n", [Node, Retries-1]),
-    % The key is to first make the new node part of the schema management.
-    % This operation itself can fail with {no_exists, Node} if Mnesia hasn't
-    % yet processed the net_kernel notification about the new node.
-    case mnesia:add_table_copy(schema, Node, disc_copies) of
+    io:format("DB: Attempting to add table replicas to node ~p. Retries left: ~p~n", [Node, Retries-1]),
+    % We try to add the application tables directly. This can fail with {no_exists, Node}
+    % if Mnesia hasn't yet processed the net_kernel notification about the new node.
+    case mnesia:add_table_copy(bloon, Node, ram_copies) of
         {atomic, ok} ->
-            io:format("DB: Node ~p is now part of the schema. Adding application tables.~n", [Node]),
-            % Now that the node is aware of schema changes, we can add our tables.
-            % These operations should now find the node.
-            mnesia:add_table_copy(bloon, Node, ram_copies),
+            % Once the first one succeeds, the node is definitely ready.
+            io:format("DB: Successfully added 'bloon' replica. Adding 'monkey' replica.~n"),
             mnesia:add_table_copy(monkey, Node, ram_copies),
             ok;
         {aborted, {no_exists, Node}} ->
@@ -86,7 +83,7 @@ add_node_to_schema_retry(Node, Retries) ->
             timer:sleep(1000),
             add_node_to_schema_retry(Node, Retries - 1);
         {aborted, Reason} ->
-            io:format("DB Error: Could not add node ~p to schema: ~p~n", [Node, Reason]),
+            io:format("DB Error: Could not add 'bloon' replica to node ~p: ~p~n", [Node, Reason]),
             {error, Reason}
     end.
 
