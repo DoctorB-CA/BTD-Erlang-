@@ -1,114 +1,47 @@
-sestudent@119-lnx-18:~/Desktop/bar/Proj$ ./start_worker1.sh
-🚀 Starting WORKER 1 node...
+csestudent@119-lnx-18:~/Desktop/bar/Proj$ ./run.sh worker1
+Starting node: worker1@132.72.81.167 with rebar3 shell
 ===> Verifying dependencies...
 ===> Analyzing applications...
 ===> Compiling proj
 Erlang/OTP 24 [erts-12.2.1] [source] [64-bit] [smp:12:12] [ds:12:12:10] [async-threads:1] [jit]
 
 Eshell V12.2.1  (abort with ^G)
-(worker1@132.72.81.167)1> Hello from the worker supervisor!
-*DEBUG* 'worker1@132.72.81.167': Worker Supervisor started. Managing region: 0 of 4
-*DEBUG* Region Server 0 started on node 'worker1@132.72.81.167'.
-*DEBUG* 'worker1@132.72.81.167': Spawning monkey of type ground_monkey.
-Monkey starting at {40,150} on node 'worker1@132.72.81.167'
-=ERROR REPORT==== 9-Sep-2025::08:04:40.043053 ===
-** Generic server region_0 terminating 
-** Last message in was {find_bloon,{40,150},100}
-** When Server state == {region_state,0,4}
-** Reason for termination ==
-** {function_clause,
-       [{region_server,find_closest_bloon,
-            [{40,150},100,{atomic,[]},none],
-            [{file,
-                 "/home/csestudent/Desktop/bar/GUI_PROJ/BTD-Erlang-/src/region_server.erl"},
-             {line,53}]},
-        {region_server,handle_call,3,
-            [{file,
-                 "/home/csestudent/Desktop/bar/GUI_PROJ/BTD-Erlang-/src/region_server.erl"},
-             {line,31}]},
-        {gen_server,try_handle_call,4,[{file,"gen_server.erl"},{line,721}]},
-        {gen_server,handle_msg,6,[{file,"gen_server.erl"},{line,750}]},
-        {proc_lib,init_p_do_apply,3,[{file,"proc_lib.erl"},{line,226}]}]}
-** Client <0.205.0> stacktrace
-** [{gen,do_call,4,[{file,"gen.erl"},{line,233}]},
-    {gen_server,call,2,[{file,"gen_server.erl"},{line,235}]},
-    {monkey,searching,3,
-            [{file,"/home/csestudent/Desktop/bar/GUI_PROJ/BTD-Erlang-/src/monkey.erl"},
-             {line,29}]},
-    {gen_statem,loop_state_callback,11,[{file,"gen_statem.erl"},{line,1203}]},
-    {proc_lib,init_p_do_apply,3,[{file,"proc_lib.erl"},{line,226}]}]
-
-=CRASH REPORT==== 9-Sep-2025::08:04:40.044342 ===
+(worker1@132.72.81.167)1> Starting 'proj' application...
+Node ''worker1@132.72.81.167'' is a worker node. Trying to connect to main node...
+Successfully connected to main node. Starting Mnesia...
+Mnesia started. Waiting for local tables to be ready...
+DB: Waiting for local tables [bloon,monkey] to be loaded...
+DB Error: timed out waiting for local tables.
+Error waiting for tables: timeout. Aborting.
+=CRASH REPORT==== 10-Sep-2025::12:57:18.928777 ===
   crasher:
-    initial call: region_server:init/1
-    pid: <0.203.0>
-    registered_name: region_0
-    exception error: no function clause matching 
-                     region_server:find_closest_bloon({40,150},
-                                                      100,
-                                                      {atomic,[]},
-                                                      none) (/home/csestudent/Desktop/bar/GUI_PROJ/BTD-Erlang-/src/region_server.erl, line 53)
-      in function  region_server:handle_call/3 (/home/csestudent/Desktop/bar/GUI_PROJ/BTD-Erlang-/src/region_server.erl, line 31)
-      in call from gen_server:try_handle_call/4 (gen_server.erl, line 721)
-      in call from gen_server:handle_msg/6 (gen_server.erl, line 750)
-    ancestors: [worker_supervisor,<0.201.0>]
-    message_queue_len: 0
-    messages: []
-    links: [<0.202.0>,<0.205.0>]
+    initial call: application_master:init/4
+    pid: <0.240.0>
+    registered_name: []
+    exception exit: {{tables_not_ready,timeout},{proj_app,start,[normal,[]]}}
+      in function  application_master:init/4 (application_master.erl, line 142) 
+    ancestors: [<0.239.0>]
+    message_queue_len: 1
+    messages: [{'EXIT',<0.241.0>,normal}]
+    links: [<0.239.0>,<0.44.0>]
     dictionary: []
-    trap_exit: false
+    trap_exit: true
     status: running
-    heap_size: 10958
+    heap_size: 610
     stack_size: 29
-    reductions: 11648
+    reductions: 239
   neighbours:
-    neighbour:
-      pid: <0.205.0>
-      registered_name: []
-      initial call: monkey:init/1
-      current_function: {gen,do_call,4}
-      ancestors: [region_0,worker_supervisor,<0.201.0>]
-      message_queue_len: 0
-      links: [<0.203.0>]
-      trap_exit: false
-      status: waiting
-      heap_size: 610
-      stack_size: 33
-      reductions: 705
-      current_stacktrace: [{gen,do_call,4,[{file,"gen.erl"},{line,233}]},
-                  {gen_server,call,2,[{file,"gen_server.erl"},{line,235}]},
-                  {monkey,searching,3,
-                          [{file,"/home/csestudent/Desktop/bar/GUI_PROJ/BTD-Erlang-/src/monkey.erl"},
-                           {line,29}]},
-                  {gen_statem,loop_state_callback,11,
-                              [{file,"gen_statem.erl"},{line,1203}]},
-                  {proc_lib,init_p_do_apply,3,
-                            [{file,"proc_lib.erl"},{line,226}]}]
-*DEBUG* Region Server 0 started on node 'worker1@132.72.81.167'.
-=SUPERVISOR REPORT==== 9-Sep-2025::08:04:40.052814 ===
-    supervisor: {local,worker_supervisor}
-    errorContext: child_terminated
-    reason: {function_clause,
-                [{region_server,find_closest_bloon,
-                     [{40,150},100,{atomic,[]},none],
-                     [{file,
-                          "/home/csestudent/Desktop/bar/GUI_PROJ/BTD-Erlang-/src/region_server.erl"},
-                      {line,53}]},
-                 {region_server,handle_call,3,
-                     [{file,
-                          "/home/csestudent/Desktop/bar/GUI_PROJ/BTD-Erlang-/src/region_server.erl"},
-                      {line,31}]},
-                 {gen_server,try_handle_call,4,
-                     [{file,"gen_server.erl"},{line,721}]},
-                 {gen_server,handle_msg,6,
-                     [{file,"gen_server.erl"},{line,750}]},
-                 {proc_lib,init_p_do_apply,3,
-                     [{file,"proc_lib.erl"},{line,226}]}]}
-    offender: [{pid,<0.203.0>},
-               {id,{region_server,0}},
-               {mfargs,{region_server,start_link,[0,4,49]}},
-               {restart_type,permanent},
-               {significant,false},
-               {shutdown,5000},
-               {child_type,worker}]
 
+=INFO REPORT==== 10-Sep-2025::12:57:18.934389 ===
+    application: proj
+    exited: {{tables_not_ready,timeout},{proj_app,start,[normal,[]]}}
+    type: temporary
+
+=INFO REPORT==== 10-Sep-2025::12:57:18.934791 ===
+    application: gproc
+    exited: stopped
+    type: temporary
+
+===> Failed to boot proj for reason {{tables_not_ready,timeout},
+                                                {proj_app,start,[normal,[]]}}
+ 
