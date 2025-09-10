@@ -1,47 +1,69 @@
-csestudent@119-lnx-18:~/Desktop/bar/Proj$ ./run.sh worker1
-Starting node: worker1@132.72.81.167 with rebar3 shell
-===> Verifying dependencies...
-===> Analyzing applications...
-===> Compiling proj
-Erlang/OTP 24 [erts-12.2.1] [source] [64-bit] [smp:12:12] [ds:12:12:10] [async-threads:1] [jit]
-
-Eshell V12.2.1  (abort with ^G)
 (worker1@132.72.81.167)1> Starting 'proj' application...
 Node ''worker1@132.72.81.167'' is a worker node. Trying to connect to main node...
 Successfully connected to main node. Starting Mnesia...
 Mnesia started. Waiting for local tables to be ready...
-DB: Waiting for local tables [bloon,monkey] to be loaded...
-DB Error: timed out waiting for local tables.
-Error waiting for tables: timeout. Aborting.
-=CRASH REPORT==== 10-Sep-2025::12:57:18.928777 ===
+=CRASH REPORT==== 10-Sep-2025::13:08:27.446326 ===
   crasher:
     initial call: application_master:init/4
-    pid: <0.240.0>
+    pid: <0.255.0>
     registered_name: []
-    exception exit: {{tables_not_ready,timeout},{proj_app,start,[normal,[]]}}
-      in function  application_master:init/4 (application_master.erl, line 142) 
-    ancestors: [<0.239.0>]
+    exception exit: {bad_return,
+                     {{proj_app,start,[normal,[]]},
+                      {'EXIT',
+                       {undef,
+                        [{db,wait_for_local_tables,[],[]},
+                         {proj_app,start,2,
+                          [{file,
+                            "/home/csestudent/Desktop/bar/Proj/src/proj_app.erl"},
+                           {line,27}]},
+                         {application_master,start_it_old,4,
+                          [{file,"application_master.erl"},{line,293}]}]}}}}
+      in function  application_master:init/4 (application_master.erl, line 142)
+    ancestors: [<0.254.0>]
     message_queue_len: 1
-    messages: [{'EXIT',<0.241.0>,normal}]
-    links: [<0.239.0>,<0.44.0>]
+    messages: [{'EXIT',<0.256.0>,normal}]
+    links: [<0.254.0>,<0.44.0>]
     dictionary: []
     trap_exit: true
     status: running
-    heap_size: 610
+    heap_size: 987
     stack_size: 29
-    reductions: 239
+    reductions: 234
   neighbours:
 
-=INFO REPORT==== 10-Sep-2025::12:57:18.934389 ===
+=INFO REPORT==== 10-Sep-2025::13:08:27.447671 ===
     application: proj
-    exited: {{tables_not_ready,timeout},{proj_app,start,[normal,[]]}}
+    exited: {bad_return,
+                {{proj_app,start,[normal,[]]},
+                 {'EXIT',
+                     {undef,
+                         [{db,wait_for_local_tables,[],[]},
+                          {proj_app,start,2,
+                              [{file,
+                                   "/home/csestudent/Desktop/bar/Proj/src/proj_app.erl"},
+                               {line,27}]},
+                          {application_master,start_it_old,4,
+                              [{file,"application_master.erl"},
+                               {line,293}]}]}}}}
     type: temporary
 
-=INFO REPORT==== 10-Sep-2025::12:57:18.934791 ===
+===> Failed to boot proj for reason {bad_return,
+                                                {{proj_app,start,[normal,[]]},
+                                                 {'EXIT',
+                                                  {undef,
+                                                   [{db,
+                                                     wait_for_local_tables,[],
+                                                     []},
+                                                    {proj_app,start,2,
+                                                     [{file,
+                                                       "/home/csestudent/Desktop/bar/Proj/src/proj_app.erl"},
+                                                      {line,27}]},
+                                                    {application_master,
+                                                     start_it_old,4,
+                                                     [{file,
+                                                       "application_master.erl"},
+                                                      {line,293}]}]}}}}
+=INFO REPORT==== 10-Sep-2025::13:08:27.448259 ===
     application: gproc
     exited: stopped
     type: temporary
-
-===> Failed to boot proj for reason {{tables_not_ready,timeout},
-                                                {proj_app,start,[normal,[]]}}
- 
