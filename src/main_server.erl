@@ -29,12 +29,14 @@ init([AllNodes]) ->
     {ok, #state{region_pids = RegionPids}}.
 
 
-handle_cast({add_monkey, Pos = {X, _Y}, Range}, State = #state{region_pids = Pids}) ->
+handle_cast({add_monkey, Pos = {X, Y}, Range}, State = #state{region_pids = Pids}) ->
     RegionIndex = trunc(X / ?REGION_WIDTH),
     RegionPid = lists:nth(RegionIndex + 1, Pids),
     io:format("~p: Routing 'add_monkey' to region PID ~p~n", [node(), RegionPid]),
     case is_pid(RegionPid) of
-        true -> gen_server:cast(RegionPid, {spawn_monkey, Pos, Range});
+        true -> 
+            gen_server:cast(RegionPid, {spawn_monkey, Pos, Range}),
+            gui:add_monkey(ground_monkeyT,X,Y,bob);
         false -> io:format("~p: ERROR - Invalid PID for region ~p~n", [node(), RegionIndex])
     end,
     {noreply, State};
