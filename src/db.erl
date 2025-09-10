@@ -74,10 +74,32 @@ add_node_to_schema_retry(Node, Retries) ->
     % if Mnesia hasn't yet processed the net_kernel notification about the new node.
     case mnesia:add_table_copy(bloon, Node, ram_copies) of
         {atomic, ok} ->
-            % Once the first one succeeds, the node is definitely ready.
-            io:format("DB: Successfully added 'bloon' replica. Adding 'monkey' replica.~n"),
-            mnesia:add_table_copy(monkey, Node, ram_copies),
-            ok;
+            io:format("DB: Initiated 'bloon' replica copy. Adding 'monkey' replica.~n"),
+            case mnesia:add_table_copy(monkey, Node, ram_copies) of
+                {atomic, ok} ->
+                    io:format("DB: Initiated 'monkey' replica copy. Waiting for tables to be ready on ~p...~n", [Node]),
+                    Tables = [bloon, monkey],
+                    % Now, remotely wait for the tables to be loaded on the worker node.
+                    % This makes the whole process synchronous.
+                    case rpc:call(Node, mnesia, wait_for_tables, [Tables, 30000]) of
+                        ok ->
+                            io:format("DB: Tables are ready on ~p. Node successfully added.~n", [Node]),
+                            ok;
+                        {badrpc, Reason} ->
+                            io:format("DB Error: RPC failed while waiting for tables on node ~p: ~p. Retrying...~n", [Node, Reason]),
+                            timer:sleep(1000),
+                            add_node_to_schema_retry(Node, Retries - 1);
+                        {error, {timeout, _}} ->
+                             io:format("DB Error: Timed out waiting for tables on node ~p.~n", [Node]),
+                             {error, remote_timeout};
+                        Error ->
+                             io:format("DB Error: Error waiting for tables on node ~p: ~p~n", [Node, Error]),
+                             Error
+                    end;
+                {aborted, Reason} ->
+                     io:format("DB Error: Could not add 'monkey' replica to node ~p: ~p~n", [Node, Reason]),
+                     {error, Reason}
+            end;
         {aborted, {no_exists, Node}} ->
             io:format("DB Warn: Mnesia doesn't see node ~p yet. Retrying...~n", [Node]),
             timer:sleep(1000),
