@@ -5,7 +5,8 @@
               {mod,{main_supervisor,[]}},
               {applications,[kernel,stdlib,wx]},
               {env,[]},
-              {modules,[arrow,bloon,db,game,main_server,main_supervisor,
-                        monkey,region_server,w,worker_supervisor]},
+              {modules,[arrow,bloon,db,game,gui,main_server,main_supervisor,
+                        monkey,proj_app,region_server,w,
+                        worker_root_supervisor,worker_supervisor]},
               {licenses,["Apache 2.0"]},
               {links,[]}]}.
