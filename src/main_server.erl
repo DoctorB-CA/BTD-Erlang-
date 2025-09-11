@@ -41,6 +41,27 @@ handle_cast({add_monkey, Pos = {X, Y}, Range}, State = #state{region_pids = Pids
     end,
     {noreply, State};
 
+
+handle_cast({place_item,{MT,X,Y}}, State = #state{region_pids = Pids}) ->
+    % Generate a unique ID for the monkey
+    I = erlang:make_ref(),
+    
+    % Add monkey to the GUI first
+    gui:add_monkey(MT,X,Y,I),
+    
+    % Route to the appropriate region to create the monkey FSM
+    RegionIndex = trunc(X / ?REGION_WIDTH),
+    RegionPid = lists:nth(RegionIndex + 1, Pids),
+    io:format("~p: Routing 'place_item' to region PID ~p~n", [node(), RegionPid]),
+    case is_pid(RegionPid) of
+        true -> 
+            gen_server:cast(RegionPid, {spawn_monkey, {X,Y}, 80});
+        false -> 
+            io:format("~p: ERROR - Invalid PID for region ~p~n", [node(), RegionIndex])
+    end,
+    {noreply, State};
+
+
 handle_cast({add_bloon, Path = [{X, _Y} | _], Health}, State = #state{region_pids = Pids}) ->
     RegionIndex = trunc(X / ?REGION_WIDTH),
     RegionPid = lists:nth(RegionIndex + 1, Pids),
