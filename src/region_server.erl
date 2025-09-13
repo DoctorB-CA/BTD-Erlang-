@@ -38,9 +38,9 @@ handle_call({find_bloon, MonkeyPos, Range}, _From, State = #region_state{id = My
 
 handle_call(ping, _From, State) -> {reply, self(), State}.
 
-handle_cast({spawn_monkey, Pos, Range}, State = #region_state{id = RegionId}) ->
+handle_cast({spawn_monkey,MT, Pos, Range}, State = #region_state{id = RegionId}) ->
     io:format("*DEBUG* ~p: Spawning monkey.~n", [node()]),
-    monkey:start_link(Pos, Range, self(), RegionId),
+    monkey:start_link(MT,Pos, Range, self(), RegionId),
     {noreply, State};
 
 handle_cast({spawn_bloon, Path, Health, AllRegionPids, RegionId}, State) ->
