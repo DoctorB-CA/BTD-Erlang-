@@ -8,6 +8,7 @@
 
 -record(monkey, {
     id,         % Unique ID for the monkey (primary key)
+    type,       % Type of monkey (e.g., ground_monkey)
     pos,        % The {X, Y} position of the monkey
     range,      % The attack range of the monkey
     region_id   % The ID of the region the monkey is in

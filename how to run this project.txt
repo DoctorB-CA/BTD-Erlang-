@@ -40,7 +40,7 @@ main_supervisor:start_link(AllWorkerNodes).
 
 
 %% Step 7: Test the System by adding a monkey
-main_server:add_monkey({40, 150}, ground).
+main_server:add_monkey(ground_monkey, {40, 150}, 80).
 
 
 %% Step 8: Test the System by adding a bloon

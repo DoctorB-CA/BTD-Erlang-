@@ -1,6 +1,6 @@
 -module(main_server).
 -behaviour(gen_server).
--export([start_link/1, add_monkey/2, add_bloon/2]).
+-export([start_link/1, add_monkey/3, add_bloon/2]).
 -export([init/1, handle_call/3, handle_cast/2]).
 
 -define(NUM_REGIONS, 4).
@@ -10,7 +10,7 @@
 -record(state, { region_pids = [] }).
 
 start_link(AllNodes) -> gen_server:start_link({local, ?MODULE}, ?MODULE, [AllNodes], []).
-add_monkey(Pos, Range) -> gen_server:cast(?MODULE, {add_monkey, Pos, Range}).
+add_monkey(Type, Pos, Range) -> gen_server:cast(?MODULE, {add_monkey, Type, Pos, Range}).
 add_bloon(Path, Health) -> gen_server:cast(?MODULE, {add_bloon, Path, Health}).
 
 init([AllNodes]) ->
@@ -29,14 +29,14 @@ init([AllNodes]) ->
     {ok, #state{region_pids = RegionPids}}.
 
 
-handle_cast({add_monkey, Pos = {X, Y}, Range}, State = #state{region_pids = Pids}) ->
+handle_cast({add_monkey, Type, Pos = {X, Y}, Range}, State = #state{region_pids = Pids}) ->
     RegionIndex = trunc(X / ?REGION_WIDTH),
     RegionPid = lists:nth(RegionIndex + 1, Pids),
     io:format("~p: Routing 'add_monkey' to region PID ~p~n", [node(), RegionPid]),
     case is_pid(RegionPid) of
         true -> 
-            gen_server:cast(RegionPid, {spawn_monkey, Pos, Range}),
-            gui:add_monkey(ground_monkeyT,X,Y,bob);
+            gen_server:cast(RegionPid, {spawn_monkey, Type, Pos, Range}),
+            gui:add_monkey(Type,X,Y,erlang:make_ref());
         false -> io:format("~p: ERROR - Invalid PID for region ~p~n", [node(), RegionIndex])
     end,
     {noreply, State};
@@ -55,7 +55,7 @@ handle_cast({place_item,{MT,X,Y}}, State = #state{region_pids = Pids}) ->
     io:format("~p: Routing 'place_item' to region PID ~p~n", [node(), RegionPid]),
     case is_pid(RegionPid) of
         true -> 
-            gen_server:cast(RegionPid, {spawn_monkey, {X,Y}, 80});
+            gen_server:cast(RegionPid, {spawn_monkey, MT, {X,Y}, 80});
         false -> 
             io:format("~p: ERROR - Invalid PID for region ~p~n", [node(), RegionIndex])
     end,

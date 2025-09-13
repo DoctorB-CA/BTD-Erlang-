@@ -128,6 +128,7 @@ load_assets(ImagePath, TypeName, Size) ->
 
 handle_cast({add_monkey,T,X,Y,I},S)->
     NMaps=maps:put(I,{X,Y,T},S#state.monkeys),
+    wxWindow:refresh(S#state.board),
     {noreply,S#state{monkeys=NMaps}};
 
 handle_cast({delete_monkey,I},S)->
