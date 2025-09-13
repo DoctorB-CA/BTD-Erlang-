@@ -1,7 +1,7 @@
 -module(main_server).
 -behaviour(gen_server).
 -include("dbr.hrl").  % Include database records
--export([start_link/1, add_monkey/3, add_bloon/2, generate_level1/0]).
+-export([start_link/1, add_monkey/3, add_bloon/1, generate_level1/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -define(NUM_REGIONS, 4).
@@ -12,7 +12,7 @@
 
 start_link(AllNodes) -> gen_server:start_link({local, ?MODULE}, ?MODULE, [AllNodes], []).
 add_monkey(Type, Pos, Range) -> gen_server:cast(?MODULE, {add_monkey, Type, Pos, Range}).
-add_bloon(Path, Health) -> gen_server:cast(?MODULE, {add_bloon, Path, Health}).
+add_bloon(Health) -> gen_server:cast(?MODULE, {add_bloon,Health}).
 
 init([AllNodes]) ->
     io:format("Main Server started. Waiting for all regions to report in...~n"),
@@ -67,7 +67,7 @@ handle_cast({place_item,{MT,X,Y}}, State = #state{region_pids = Pids}) ->
     {noreply, State};
 
 
-handle_cast({add_bloon,_, Health}, State = #state{region_pids = Pids}) ->
+handle_cast({add_bloon, Health}, State = #state{region_pids = Pids}) ->
     X = 0,
     RegionIndex = trunc(X / ?REGION_WIDTH),
     RegionPid = lists:nth(RegionIndex + 1, Pids),
