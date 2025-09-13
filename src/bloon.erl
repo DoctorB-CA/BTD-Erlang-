@@ -96,3 +96,29 @@ handle_region_crossing(#state{pos = {NewX, _}, path = FullPath, path_index = Idx
             end,
             {stay, OldRPid}
     end.
+
+
+%%% ---------- paths -----------
+get_path() ->
+    %% Path: {0,200} -> {200,200} -> {200,400} -> {800,400}
+    Start = {0,200},
+    Path1 = right(Start, 200),
+    Path2 = up(lists:last(Path1), 200),
+    Path3 = right(lists:last(Path2), 600),
+    Path1 ++ Path2 ++ Path3.
+
+%% Moves right by N pixels from Pos
+right({X,Y}, N) ->
+    lists:map(fun(D) -> {X+D, Y} end, lists:seq(1, N)).
+
+%% Moves left by N pixels from Pos
+left({X,Y}, N) ->
+    lists:map(fun(D) -> {X-D, Y} end, lists:seq(1, N)).
+
+%% Moves up by N pixels from Pos
+up({X,Y}, N) ->
+    lists:map(fun(D) -> {X, Y+D} end, lists:seq(1, N)).
+
+%% Moves down by N pixels from Pos
+down({X,Y}, N) ->
+    lists:map(fun(D) -> {X, Y-D} end, lists:seq(1, N)).
