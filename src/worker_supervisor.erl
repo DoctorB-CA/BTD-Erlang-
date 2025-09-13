@@ -3,7 +3,7 @@
 
 -export([start_link/2, start_as_root/2, init/1]).
 
--define(REGION_WIDTH, 50).
+-define(REGION_WIDTH, 200).
 
 % Start the supervisor as a detached process on a worker node
 start_as_root(RegionId, TotalRegions) ->

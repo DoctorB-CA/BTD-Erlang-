@@ -4,7 +4,7 @@
 -export([init/1, handle_call/3, handle_cast/2]).
 
 -define(NUM_REGIONS, 4).
--define(REGION_WIDTH, 50).
+-define(REGION_WIDTH, 200).
 
 % The state will now hold the actual PIDs of the remote regions.
 -record(state, { region_pids = [] }).

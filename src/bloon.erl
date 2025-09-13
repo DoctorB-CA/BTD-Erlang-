@@ -7,7 +7,7 @@
 -export([init/1, callback_mode/0, terminate/3, moving/3]).
 
 -define(MOVE_INTERVAL, 2000).
--define(REGION_WIDTH, 50).
+-define(REGION_WIDTH, 200).
 
 -record(state, {id, path, path_index, health, pos, current_region_pid, region_pids, region_id}).
 

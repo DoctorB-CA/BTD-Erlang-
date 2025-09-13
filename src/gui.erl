@@ -13,7 +13,7 @@
 -define(WINDOW_HEIGHT, 1000).
 -define(BUTTON_WIDTH, 80).
 -define(BUTTON_HEIGHT, 80).
--define(CANVAS_WIDTH, 700).
+-define(CANVAS_WIDTH, 200).
 -define(CANVAS_HEIGHT, 600).
 -define(BALLOON_WIDTH, 40).
 -define(BALLOON_HEIGHT, 40).
