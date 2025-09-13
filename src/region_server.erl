@@ -43,8 +43,8 @@ handle_cast({spawn_monkey,MT, Pos, Range}, State = #region_state{id = RegionId})
     monkey:start_link(MT,Pos, Range, self(), RegionId),
     {noreply, State};
 
-handle_cast({spawn_bloon, Health, AllRegionPids, RegionId}, State) ->
-    bloon:start_link(Health, self(), AllRegionPids, RegionId),
+handle_cast({spawn_bloon, Health, AllRegionPids, _RegionId}, State) ->
+    bloon:start_link(Health, self(), AllRegionPids),
     {noreply, State}.
 
 % Helper functions
