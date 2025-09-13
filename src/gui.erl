@@ -18,7 +18,7 @@
 -define(CANVAS_HEIGHT, 600).
 -define(BALLOON_WIDTH, 40).
 -define(BALLOON_HEIGHT, 40).
--define(TICK_INTERVAL, 100).  % Update every 100ms for smooth movement
+-define(TICK_INTERVAL, 200).  % Update every 200ms - smoother but not overwhelming
 -define(DART_WIDTH, 35).
 -define(DART_HEIGHT, 25).
 -define(FULL_MAP_WIDTH, ?CANVAS_WIDTH * 4).
