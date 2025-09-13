@@ -116,14 +116,13 @@ get_remote_pid({Name, Node} = NameNode, Retries) ->
 %% --- genertes levels  ----
 generate_level1() ->
     %% Step 8: Test the System by adding a bloon
-    Path = [{10, 100},{20, 100},{30, 100},{40, 100},{50, 100},{60, 100}, {70, 110}, {80, 100}, {120, 90}, {180, 100}],
-    main_server:add_bloon(Path, 5),
-    timer:sleep(500),%colldown
-    main_server:add_bloon(Path, 5),
-    timer:sleep(500),%colldown
-    main_server:add_bloon(Path, 5),
-    timer:sleep(500),%colldown
-    main_server:add_bloon(Path, 5),
-    timer:sleep(500),%colldown
-    main_server:add_bloon(Path, 5).
+    main_server:add_bloon([], 5),
+    timer:sleep(500), % cooldown
+    main_server:add_bloon([], 5),
+    timer:sleep(500), % cooldown
+    main_server:add_bloon([], 5),
+    timer:sleep(500), % cooldown
+    main_server:add_bloon([], 5),
+    timer:sleep(500), % cooldown
+    main_server:add_bloon([], 5).
 
