@@ -82,21 +82,16 @@ handle_info(update_gui_balloons, State) ->
     
     % Convert bloon records to GUI format
     BalloonMap = lists:foldl(
-        fun(BloonRecord, Acc) ->
-            #bloon{id=Id, path=Path, path_index=PathIndex} = BloonRecord,
-            case PathIndex =< length(Path) of
-                true ->
-                    Pos = lists:nth(PathIndex, Path),
-                    maps:put(Id, {red, Pos}, Acc);
-                false ->
-                    Acc % Bloon finished path, don't display
-            end
-        end,
-        #{},
-        AllBloons
-    ),
+    fun(BloonRecord, Acc) ->
+        #bloon{id=Id, pos=Pos} = BloonRecord,
+        maps:put(Id, {red, Pos}, Acc)
+    end,
+    #{},
+    AllBloons
+),
     
     % Send batch update to GUI
+    
     gui:update_balloons(BalloonMap),
     {noreply, State};
 

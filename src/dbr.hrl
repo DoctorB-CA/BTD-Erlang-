@@ -1,8 +1,8 @@
 -record(bloon, {
     id,         % Unique ID for the bloon (primary key)
     health,     % Current health
-    path,       % The full path the bloon follows
-    path_index, % The current step on the path
+    index,      % Current index on the path
+    pos,        % Current position {X, Y}
     region_id   % The ID of the region the bloon is in
 }).
 

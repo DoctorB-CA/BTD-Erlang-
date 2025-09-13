@@ -3,76 +3,67 @@
 
 -include("dbr.hrl").
 
--export([start_link/5, get_pos/1]).
+-export([start_link/3, get_pos/1]).
 -export([init/1, callback_mode/0, terminate/3, moving/3]).
 
 -define(MOVE_INTERVAL, 200).  % Move every 200ms instead of 2000ms
 -define(REGION_WIDTH, 200).
 
--record(state, {id, path, path_index, health, pos, current_region_pid, region_pids, region_id}).
+-record(state, {id, path_index, health, pos, current_region_pid, region_pids, region_id}).
 
 get_pos(Pid) -> gen_statem:call(Pid, get_pos).
 
-start_link(Path, Health, RPid, AllRPids, RegionId) ->
+start_link(Health, RPid, AllRPids) ->
     BloonId = erlang:make_ref(),
-    gen_statem:start_link({global, BloonId}, ?MODULE, [{start, Path, Health, RegionId, BloonId}, RPid, AllRPids], []).
+    gen_statem:start_link({global, BloonId}, ?MODULE, [{start, Health, BloonId}, RPid, AllRPids], []).
 
 callback_mode() -> state_functions.
 
-init([{start, Path, Health, RegionId, BloonId}, RPid, AllRPids]) ->
+init([{start, Health, BloonId}, RPid, AllRPids]) ->
+    Path = get_path(),
     [StartPos | _] = Path,
-    BloonRecord = #bloon{id=BloonId, health=Health, path=Path, path_index=1, region_id=RegionId},
+    BloonRecord = #bloon{id=BloonId, health=Health, index=1, pos=StartPos, region_id=0},
     db:write_bloon(BloonRecord),
-    % GUI will read from database, no need to call GUI directly
-    % gen_server:cast(RPid, {add_bloon, self(), StartPos}), % No longer needed
-    Data = #state{id=BloonId, path=Path, health=Health, pos=StartPos, path_index=1,
-                  current_region_pid=RPid, region_pids=AllRPids, region_id=RegionId},
+    Data = #state{id=BloonId, health=Health, pos=StartPos, path_index=1,
+                  current_region_pid=RPid, region_pids=AllRPids, region_id=0},
     {ok, moving, Data, {state_timeout, ?MOVE_INTERVAL, move}}.
 
-% FIXED: The second argument is the state *name* (the atom 'moving'), not a general wildcard.
-% This function is called by the OTP framework *after* the decision to stop has been made.
 terminate(_Reason, moving, #state{id = BloonId, current_region_pid = _RPid}) ->
     db:delete_bloon(BloonId),
-    % gen_server:cast(RPid, {remove_bloon, self()}), % No longer needed
-    ok. % It's good practice for terminate to explicitly return 'ok'.
+    ok.
 
 moving({call, From}, get_pos, Data) ->
     {keep_state, Data, {reply, From, {ok, Data#state.pos}}};
-% FIXED: This clause now correctly returns only the result of the 'if' statement.
-moving(info, {hit, Dmg}, Data=#state{id=BloonId, health=H, path=P, path_index=PI, region_id=RId, pos=Pos}) ->
+moving(info, {hit, Dmg}, Data=#state{id=BloonId, health=H, path_index=PI, region_id=RId, pos=Pos}) ->
     NewHealth = H - Dmg,
-    db:write_bloon(#bloon{id=BloonId, health=NewHealth, path=P, path_index=PI, region_id=RId}),
+    db:write_bloon(#bloon{id=BloonId, health=NewHealth, index=PI, pos=Pos, region_id=RId}),
     if
         NewHealth =< 0 ->
             io:format("*DEBUG* Bloon died at position: ~p~n", [Pos]),
-            % Delete from database, GUI will notice in next update
             db:delete_bloon(BloonId),
-            % When health is zero or less, stop the process.
             {stop, normal, Data#state{health=NewHealth}};
         true ->
-            % Otherwise, just update the health and keep going.
             {keep_state, Data#state{health=NewHealth}}
     end;
-moving(state_timeout, move, Data=#state{id=BloonId, health=H, path=P, region_id=RId}) ->
-    NextIdx = Data#state.path_index + 1,
-    db:write_bloon(#bloon{id=BloonId, health=H, path=P, path_index=NextIdx, region_id=RId}),
+moving(state_timeout, move, Data=#state{id=BloonId, health=H, path_index=PI, region_id=RId}) ->
+    NextIdx = PI + 1,
+    NewPos = get_location(NextIdx),
     if
-        NextIdx > length(Data#state.path) ->
+        NewPos =:= undefined ->
             {stop, normal, Data};
         true ->
-            NewPos = lists:nth(NextIdx, Data#state.path),
+            db:write_bloon(#bloon{id=BloonId, health=H, index=NextIdx, pos=NewPos, region_id=RId}),
             NewData = Data#state{path_index=NextIdx, pos=NewPos},
             Action = handle_region_crossing(NewData),
             case Action of
                 {move_to_new_node, _} ->
                     {stop, normal, NewData};
                 {stay, _OldRPid} ->
-                    % gen_server:cast(OldRPid, {update_bloon_pos, self(), NewPos}), % No longer needed
                     {keep_state, NewData, {state_timeout, ?MOVE_INTERVAL, move}}
             end
     end.
 
-handle_region_crossing(#state{pos = {NewX, _}, path = FullPath, path_index = Idx, health = H, region_pids = AllPids, current_region_pid = OldRPid, region_id = OldRegionId}) ->
+handle_region_crossing(#state{pos = {NewX, _}, path_index = Idx, health = H, region_pids = AllPids, current_region_pid = OldRPid, region_id = OldRegionId}) ->
     NewRIdx = trunc(NewX / ?REGION_WIDTH),
     NewRPid = lists:nth(NewRIdx + 1, AllPids),
     OldNode = node(OldRPid),
@@ -80,18 +71,16 @@ handle_region_crossing(#state{pos = {NewX, _}, path = FullPath, path_index = Idx
     if
         OldNode /= NewNode ->
             io:format("*DEBUG* --- Bloon ~p MIGRATING from node ~p to ~p ---~n", [self(), OldNode, NewNode]),
-            RestOfPath = lists:nthtail(Idx - 1, FullPath),
-            % gen_server:cast(OldRPid, {remove_bloon, self()}), % No longer needed
-            % The new region ID is simply the index.
+            Path = get_path(),
+            RestOfPath = lists:nthtail(Idx - 1, Path),
             NewRegionId = NewRIdx,
             gen_server:cast(NewRPid, {spawn_bloon, RestOfPath, H, AllPids, NewRegionId}),
             {move_to_new_node, NewRPid};
         true ->
-            % If we are staying on the same node, we still need to update the region_id in the database
             NewRegionId = NewRIdx,
             if
                 NewRegionId /= OldRegionId ->
-                    db:write_bloon(#bloon{id=self(), health=H, path=FullPath, path_index=Idx, region_id=NewRegionId});
+                    db:write_bloon(#bloon{id=self(), health=H, pos=lists:nth(Idx, get_path()), index=Idx, region_id=NewRegionId});
                 true -> ok
             end,
             {stay, OldRPid}
@@ -100,12 +89,16 @@ handle_region_crossing(#state{pos = {NewX, _}, path = FullPath, path_index = Idx
 
 %%% ---------- paths -----------
 get_path() ->
-    %% Path: {0,200} -> {200,200} -> {200,400} -> {800,400}
+     %% Path: {0,200} -> {200,200} -> {200,400} -> {500,400} -> {500,200} -> {300,200} -> {300,600} -> {800,600}
     Start = {0,200},
-    Path1 = right(Start, 200),
-    Path2 = up(lists:last(Path1), 200),
-    Path3 = right(lists:last(Path2), 600),
-    Path1 ++ Path2 ++ Path3.
+    Path1 = right(Start, 200),                % {0,200} -> {200,200}
+    Path2 = up(lists:last(Path1), 200),       % {200,200} -> {200,400}
+    Path3 = right(lists:last(Path2), 300),    % {200,400} -> {500,400}
+    Path4 = down(lists:last(Path3), 200),     % {500,400} -> {500,200}
+    Path5 = left(lists:last(Path4), 200),     % {500,200} -> {300,200}
+    Path6 = up(lists:last(Path5), 400),       % {300,200} -> {300,600}
+    Path7 = right(lists:last(Path6), 500),    % {300,600} -> {800,600}
+    Path1 ++ Path2 ++ Path3 ++ Path4 ++ Path5 ++ Path6 ++ Path7.
 
 %% Moves right by N pixels from Pos
 right({X,Y}, N) ->
@@ -122,3 +115,11 @@ up({X,Y}, N) ->
 %% Moves down by N pixels from Pos
 down({X,Y}, N) ->
     lists:map(fun(D) -> {X, Y-D} end, lists:seq(1, N)).
+
+%% Returns the location on the path for a given index
+get_location(Index) ->
+    Path = get_path(),
+    case (Index > 0) andalso (Index =< length(Path)) of
+        true -> lists:nth(Index, Path);
+        false -> undefined
+    end.
