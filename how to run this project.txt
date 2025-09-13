@@ -37,7 +37,7 @@ rpc:call(Worker4, worker_supervisor, start_as_root, [3, 4]).
 
 %% Step 6: Start the Main Supervisor
 main_supervisor:start_link(AllWorkerNodes).
-
+gui:start_link().
 
 %% Step 7: Test the System by adding a monkey
 main_server:add_monkey(ground_monkey, {40, 150}, 80).
