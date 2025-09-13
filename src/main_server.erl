@@ -67,11 +67,12 @@ handle_cast({place_item,{MT,X,Y}}, State = #state{region_pids = Pids}) ->
     {noreply, State};
 
 
-handle_cast({add_bloon, Path = [{X, _Y} | _], Health}, State = #state{region_pids = Pids}) ->
+handle_cast({add_bloon,_, Health}, State = #state{region_pids = Pids}) ->
+    X = 0,
     RegionIndex = trunc(X / ?REGION_WIDTH),
     RegionPid = lists:nth(RegionIndex + 1, Pids),
     % This is now much simpler and correct. We already have the PIDs.
-    gen_server:cast(RegionPid, {spawn_bloon, Path, Health, Pids, RegionIndex}),
+    gen_server:cast(RegionPid, {spawn_bloon, Health, Pids, RegionIndex}),
     {noreply, State}.
 
 handle_call(_Request, _From, State) -> {reply, ok, State}.
@@ -116,13 +117,13 @@ get_remote_pid({Name, Node} = NameNode, Retries) ->
 %% --- genertes levels  ----
 generate_level1() ->
     %% Step 8: Test the System by adding a bloon
-    main_server:add_bloon([], 5),
+    main_server:add_bloon(5),
     timer:sleep(500), % cooldown
-    main_server:add_bloon([], 5),
+    main_server:add_bloon(5),
     timer:sleep(500), % cooldown
-    main_server:add_bloon([], 5),
+    main_server:add_bloon(5),
     timer:sleep(500), % cooldown
-    main_server:add_bloon([], 5),
+    main_server:add_bloon(5),
     timer:sleep(500), % cooldown
-    main_server:add_bloon([], 5).
+    main_server:add_bloon(5).
 

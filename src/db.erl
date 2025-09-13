@@ -154,3 +154,4 @@ create_tables(AllNodes) ->
 
     io:format("DB: Waiting for tables to be loaded on main node...~n"),
     mnesia:wait_for_tables([bloon, monkey], 20000).
+%% 
