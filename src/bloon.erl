@@ -23,6 +23,7 @@ init([{start, Path, Health, RegionId, BloonId}, RPid, AllRPids]) ->
     [StartPos | _] = Path,
     BloonRecord = #bloon{id=BloonId, health=Health, path=Path, path_index=1, region_id=RegionId},
     db:write_bloon(BloonRecord),
+    % GUI will read from database, no need to call GUI directly
     % gen_server:cast(RPid, {add_bloon, self(), StartPos}), % No longer needed
     Data = #state{id=BloonId, path=Path, health=Health, pos=StartPos, path_index=1,
                   current_region_pid=RPid, region_pids=AllRPids, region_id=RegionId},
@@ -44,6 +45,8 @@ moving(info, {hit, Dmg}, Data=#state{id=BloonId, health=H, path=P, path_index=PI
     if
         NewHealth =< 0 ->
             io:format("*DEBUG* Bloon died at position: ~p~n", [Pos]),
+            % Delete from database, GUI will notice in next update
+            db:delete_bloon(BloonId),
             % When health is zero or less, stop the process.
             {stop, normal, Data#state{health=NewHealth}};
         true ->

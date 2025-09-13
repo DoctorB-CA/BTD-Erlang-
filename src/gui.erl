@@ -1,11 +1,12 @@
 -module(gui).
 -behaviour(gen_server).
 -include_lib("wx/include/wx.hrl").
+-include("dbr.hrl").  % Include database records
 
 
 -export([start_link/0, add_monkey/4, delete_monkey/1, add_balloon/3, delete_balloon/1, move_balloon/2,
          add_dart/3, delete_dart/1, move_dart/2, change_bananas/1, lose_game/0, clear_board/0,
-         refresh/0]).
+         refresh/0, update_balloons/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 -export([load_assets/3]).
 
@@ -17,7 +18,7 @@
 -define(CANVAS_HEIGHT, 600).
 -define(BALLOON_WIDTH, 40).
 -define(BALLOON_HEIGHT, 40).
--define(TICK_INTERVAL, 500).
+-define(TICK_INTERVAL, 100).  % Update every 100ms for smooth movement
 -define(DART_WIDTH, 35).
 -define(DART_HEIGHT, 25).
 -define(FULL_MAP_WIDTH, ?CANVAS_WIDTH * 4).
@@ -46,6 +47,7 @@ refresh() -> gen_server:cast(gui, refresh).
 change_bananas(Amount) -> gen_server:cast(gui, {change_bananas, Amount}).
 lose_game() -> gen_server:cast(gui, lose_game).
 clear_board() -> gen_server:cast(gui, clear_board).
+update_balloons(BalloonMap) -> gen_server:cast(gui, {update_balloons, BalloonMap}).
 
 init([]) ->
     wx:new(),
@@ -112,6 +114,7 @@ init([]) ->
     wxWindow:connect(FireMonkeyButton, command_button_clicked), wxWindow:connect(AirMonkeyButton, command_button_clicked),
     wxWindow:connect(AvatarMonkeyButton, command_button_clicked), wxWindow:connect(StartWaveButton, command_button_clicked),
     wxFrame:show(Frame),
+    
     {ok, #state{frame=Frame, board=Board, map_bitmap=MapBitmap, bitmaps=Bitmaps, banana_text_widget = BananaTextWidget, ground_monkey_button_id=GroundMonkeyButtonId, water_monkey_button_id=WaterMonkeyButtonId, fire_monkey_button_id=FireMonkeyButtonId, air_monkey_button_id=AirMonkeyButtonId, avatar_monkey_button_id=AvatarMonkeyButtonId, start_wave_button_id = StartWaveButtonId}}.
 
 
@@ -136,14 +139,17 @@ handle_cast({delete_monkey,I},S)->
     {noreply,S#state{monkeys=NMaps}};
 
 handle_cast({add_balloon,I,T,P},S)->
+    % Keep this for compatibility but balloons will be updated from DB
     NMaps=maps:put(I,{T,P},S#state.balloons),
     {noreply,S#state{balloons=NMaps}};
 
 handle_cast({delete_balloon,I},S)->
+    % Keep this for compatibility but balloons will be updated from DB
     NMaps=maps:remove(I,S#state.balloons),
     {noreply,S#state{balloons=NMaps}};
 
 handle_cast({move_balloon,I,NP},S=#state{balloons=B})->
+    % Keep this for compatibility but balloons will be updated from DB
     case maps:is_key(I,B) of 
         true->
             {T,_}=maps:get(I,B),
@@ -191,6 +197,10 @@ handle_cast(lose_game,S=#state{frame=F})->
 
 handle_cast(clear_board,S)->
     {noreply,S#state{monkeys=#{},balloons=#{},darts=#{}}};
+
+handle_cast({update_balloons, BalloonMap}, S) ->
+    wxWindow:refresh(S#state.board),
+    {noreply, S#state{balloons=BalloonMap}};
 
 handle_cast(_,S)->{noreply,S}.
 

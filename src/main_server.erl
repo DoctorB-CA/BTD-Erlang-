@@ -1,7 +1,8 @@
 -module(main_server).
 -behaviour(gen_server).
--export([start_link/1, add_monkey/3, add_bloon/2]).
--export([init/1, handle_call/3, handle_cast/2]).
+-include("dbr.hrl").  % Include database records
+-export([start_link/1, add_monkey/3, add_bloon/2, generate_level1/0]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -define(NUM_REGIONS, 4).
 -define(REGION_WIDTH, 200).
@@ -26,6 +27,10 @@ init([AllNodes]) ->
     RegionPids = [get_remote_pid(NameNode, 10) || NameNode <- RegionNameNodes],
 
     io:format("Main Server: All regions are up and running with PIDs: ~p~n", [RegionPids]),
+    
+    % Start timer for smooth balloon updates to GUI (every 100ms)
+    timer:send_interval(100, self(), update_gui_balloons),
+    
     {ok, #state{region_pids = RegionPids}}.
 
 
@@ -71,6 +76,33 @@ handle_cast({add_bloon, Path = [{X, _Y} | _], Health}, State = #state{region_pid
 
 handle_call(_Request, _From, State) -> {reply, ok, State}.
 
+handle_info(update_gui_balloons, State) ->
+    % Get all bloons from database and update GUI
+    AllBloons = db:get_bloons_in_regions([0, 1, 2, 3]), % Get from all regions
+    
+    % Convert bloon records to GUI format
+    BalloonMap = lists:foldl(
+        fun(BloonRecord, Acc) ->
+            #bloon{id=Id, path=Path, path_index=PathIndex} = BloonRecord,
+            case PathIndex =< length(Path) of
+                true ->
+                    Pos = lists:nth(PathIndex, Path),
+                    maps:put(Id, {red, Pos}, Acc);
+                false ->
+                    Acc % Bloon finished path, don't display
+            end
+        end,
+        #{},
+        AllBloons
+    ),
+    
+    % Send batch update to GUI
+    gui:update_balloons(BalloonMap),
+    {noreply, State};
+
+handle_info(_Info, State) ->
+    {noreply, State}.
+
 
 %% --- HELPER FUNCTION ---
 get_remote_pid(_NameNode, 0) ->
@@ -84,3 +116,19 @@ get_remote_pid({Name, Node} = NameNode, Retries) ->
         Pid when is_pid(Pid) ->
             Pid
     end.
+
+
+%% --- genertes levels  ----
+generate_level1() ->
+    %% Step 8: Test the System by adding a bloon
+    Path = [{10, 100},{20, 100},{30, 100},{40, 100},{50, 100},{60, 100}, {70, 110}, {80, 100}, {120, 90}, {180, 100}],
+    main_server:add_bloon(Path, 5),
+    timer:sleep(500),%colldown
+    main_server:add_bloon(Path, 5),
+    timer:sleep(500),%colldown
+    main_server:add_bloon(Path, 5),
+    timer:sleep(500),%colldown
+    main_server:add_bloon(Path, 5),
+    timer:sleep(500),%colldown
+    main_server:add_bloon(Path, 5).
+
