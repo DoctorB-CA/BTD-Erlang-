@@ -9,7 +9,7 @@
 -define(MOVE_INTERVAL, 200).  % Move every 200ms instead of 2000ms
 -define(REGION_WIDTH, 200).
 
--record(state, {id, path_index, health, pos, current_region_pid, region_pids, region_id}).
+-record(state, {id, index, health, pos, current_region_pid, region_pids, region_id}).
 
 get_pos(Pid) -> gen_statem:call(Pid, get_pos).
 
@@ -24,7 +24,7 @@ init([{start, Health, BloonId}, RPid, AllRPids]) ->
     [StartPos | _] = Path,
     BloonRecord = #bloon{id=BloonId, health=Health, index=1, pos=StartPos, region_id=0},
     db:write_bloon(BloonRecord),
-    Data = #state{id=BloonId, health=Health, pos=StartPos, path_index=1,
+    Data = #state{id=BloonId, health=Health, pos=StartPos, index=1,
                   current_region_pid=RPid, region_pids=AllRPids, region_id=0},
     {ok, moving, Data, {state_timeout, ?MOVE_INTERVAL, move}}.
 
@@ -34,7 +34,7 @@ terminate(_Reason, moving, #state{id = BloonId, current_region_pid = _RPid}) ->
 
 moving({call, From}, get_pos, Data) ->
     {keep_state, Data, {reply, From, {ok, Data#state.pos}}};
-moving(info, {hit, Dmg}, Data=#state{id=BloonId, health=H, path_index=PI, region_id=RId, pos=Pos}) ->
+moving(info, {hit, Dmg}, Data=#state{id=BloonId, health=H, index=PI, region_id=RId, pos=Pos}) ->
     NewHealth = H - Dmg,
     db:write_bloon(#bloon{id=BloonId, health=NewHealth, index=PI, pos=Pos, region_id=RId}),
     if
@@ -45,7 +45,7 @@ moving(info, {hit, Dmg}, Data=#state{id=BloonId, health=H, path_index=PI, region
         true ->
             {keep_state, Data#state{health=NewHealth}}
     end;
-moving(state_timeout, move, Data=#state{id=BloonId, health=H, path_index=PI, region_id=RId}) ->
+moving(state_timeout, move, Data=#state{id=BloonId, health=H, index=PI, region_id=RId}) ->
     NextIdx = PI + 1,
     NewPos = get_location(NextIdx),
     if
@@ -53,7 +53,7 @@ moving(state_timeout, move, Data=#state{id=BloonId, health=H, path_index=PI, reg
             {stop, normal, Data};
         true ->
             db:write_bloon(#bloon{id=BloonId, health=H, index=NextIdx, pos=NewPos, region_id=RId}),
-            NewData = Data#state{path_index=NextIdx, pos=NewPos},
+            NewData = Data#state{index=NextIdx, pos=NewPos},
             Action = handle_region_crossing(NewData),
             case Action of
                 {move_to_new_node, _} ->
@@ -63,7 +63,7 @@ moving(state_timeout, move, Data=#state{id=BloonId, health=H, path_index=PI, reg
             end
     end.
 
-handle_region_crossing(#state{pos = {NewX, _}, path_index = Idx, health = H, region_pids = AllPids, current_region_pid = OldRPid, region_id = OldRegionId}) ->
+handle_region_crossing(#state{pos = {NewX, _}, index = Idx, health = H, region_pids = AllPids, current_region_pid = OldRPid, region_id = OldRegionId}) ->
     NewRIdx = trunc(NewX / ?REGION_WIDTH),
     NewRPid = lists:nth(NewRIdx + 1, AllPids),
     OldNode = node(OldRPid),

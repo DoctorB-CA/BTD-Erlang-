@@ -52,8 +52,7 @@ distance({X1, Y1}, {X2, Y2}) -> math:sqrt(math:pow(X2 - X1, 2) + math:pow(Y2 - Y
 
 find_closest_bloon(_, _, [], Closest) -> Closest;
 find_closest_bloon(MonkeyPos, Range, [Bloon | Rest], Closest) ->
-    #bloon{id=Pid, health=_Health, index=_Idx, pos=Pos, region_id=_RegionId} = Bloon,
-    BloonPos = Pos,
+    #bloon{id=Pid, health=_Health, index=_Idx, pos=BloonPos, region_id=_RegionId} = Bloon,
     Dist = distance(MonkeyPos, BloonPos),
     NewClosest = if
         Dist =< Range ->
