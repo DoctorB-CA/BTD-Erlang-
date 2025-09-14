@@ -30,8 +30,8 @@ init([AllNodes]) ->
 
     io:format("Main Server: All regions are up and running with PIDs: ~p~n", [RegionPids]),
     
-    % Start timer for GUI updates - 60 FPS for ultra-smooth visuals, no frame skipping
-    timer:send_interval(16, self(), update_gui_balloons),
+    % Start timer for GUI updates - 30 FPS for smooth visuals without flicker
+    timer:send_interval(33, self(), update_gui_balloons),
     
     {ok, #state{region_pids = RegionPids}}.
 
