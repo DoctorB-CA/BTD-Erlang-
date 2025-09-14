@@ -117,8 +117,7 @@ init([]) ->
     wxWindow:connect(AvatarMonkeyButton, command_button_clicked), wxWindow:connect(StartWaveButton, command_button_clicked),
     wxFrame:show(Frame),
     
-    % Start a timer for GUI refresh at 30 FPS to prevent white flashes
-    timer:send_interval(33, self(), gui_refresh),
+    % No separate GUI refresh timer - main_server handles all timing
     
     {ok, #state{frame=Frame, board=Board, map_bitmap=MapBitmap, bitmaps=Bitmaps, banana_text_widget = BananaTextWidget, ground_monkey_button_id=GroundMonkeyButtonId, water_monkey_button_id=WaterMonkeyButtonId, fire_monkey_button_id=FireMonkeyButtonId, air_monkey_button_id=AirMonkeyButtonId, avatar_monkey_button_id=AvatarMonkeyButtonId, start_wave_button_id = StartWaveButtonId}}.
 
@@ -204,20 +203,16 @@ handle_cast(clear_board,S)->
     {noreply,S#state{monkeys=#{},balloons=#{},darts=#{}}};
 
 handle_cast({update_balloons, BalloonMap}, S) ->
-    % SIMPLE APPROACH: Just update balloons without forcing refresh
-    % The paint event will handle the redraw naturally
-    {noreply, S#state{balloons=BalloonMap}};  % Store new balloon positions
+    % Update balloons and trigger ONE refresh per update cycle
+    wxWindow:refresh(S#state.board),
+    {noreply, S#state{balloons=BalloonMap}};
 
 handle_cast({update_darts, DartMap}, S) ->
-    % SIMPLE APPROACH: Just update darts without forcing refresh
-    {noreply, S#state{darts=DartMap}};  % Store new dart positions
+    % Just update darts - refresh already triggered by balloons
+    {noreply, S#state{darts=DartMap}};
 
 handle_cast(_,S)->{noreply,S}.
 
-
-handle_info(gui_refresh, S) ->
-    wxWindow:refresh(S#state.board),
-    {noreply, S};
 
 handle_info(#wx{event=#wxPaint{}},S)->
     DC=wxBufferedPaintDC:new(S#state.board),  

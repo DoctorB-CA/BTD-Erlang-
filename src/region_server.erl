@@ -49,7 +49,23 @@ handle_cast({spawn_bloon, Health, AllRegionPids, _RegionId}, State) ->
     {noreply, State};
 
 handle_cast({spawn_bloon_migration, Health, Index, Pos, AllRegionPids, _RegionId, OriginalBloonId}, State) ->
-    bloon:start_link_migration(Health, Index, Pos, self(), AllRegionPids, OriginalBloonId),
+    % Check if balloon already exists on this node to avoid duplication
+    case global:whereis_name(OriginalBloonId) of
+        undefined ->
+            % Safe to spawn new balloon
+            io:format("*DEBUG* Region spawning migrated balloon ~p at pos ~p~n", [OriginalBloonId, Pos]),
+            bloon:start_link_migration(Health, Index, Pos, self(), AllRegionPids, OriginalBloonId);
+        ExistingPid ->
+            % Balloon already exists, check if it's on a different node
+            case node(ExistingPid) =:= node() of
+                true ->
+                    io:format("*DEBUG* Balloon ~p already exists on this node, skipping spawn~n", [OriginalBloonId]);
+                false ->
+                    io:format("*DEBUG* Balloon ~p exists on different node ~p, waiting for migration~n", [OriginalBloonId, node(ExistingPid)]),
+                    % Wait a bit and try again
+                    timer:apply_after(100, gen_server, cast, [self(), {spawn_bloon_migration, Health, Index, Pos, AllRegionPids, _RegionId, OriginalBloonId}])
+            end
+    end,
     {noreply, State}.
 
 % Helper functions

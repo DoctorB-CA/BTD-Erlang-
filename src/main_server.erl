@@ -123,7 +123,7 @@ generate_level1() ->
     %% Spawn balloons with proper timing to avoid GUI overload
     spawn(fun() ->
         lists:foreach(fun(N) ->
-            main_server:add_bloon(5),
+            main_server:add_bloon(1),
             io:format("Spawned balloon ~p/5~n", [N]),
             timer:sleep(200)  % 200ms between balloons
         end, lists:seq(1, 5))

@@ -91,31 +91,56 @@ moving(state_timeout, move, Data=#state{id=BloonId, health=H, index=PI, region_i
             case Action of
                 {move_to_new_node, _} ->
                     {stop, normal, NewData};
-                {stay, _OldRPid} ->
-                    {keep_state, NewData, {state_timeout, ?MOVE_INTERVAL, move}}
+                {stop_and_migrate, _} ->
+                    io:format("*DEBUG* Balloon ~p stopping for migration~n", [BloonId]),
+                    {stop, normal, NewData};
+                {stay, NewRPid} ->
+                    % Update region PID in state if it changed
+                    UpdatedData = NewData#state{current_region_pid=NewRPid},
+                    {keep_state, UpdatedData, {state_timeout, ?MOVE_INTERVAL, move}}
             end
     end.
 
 handle_region_crossing(#state{id=BloonId, pos = {NewX, _} = CurrentPos, index = Idx, health = H, region_pids = AllPids, current_region_pid = OldRPid, region_id = OldRegionId}) ->
     NewRIdx = trunc(NewX / ?REGION_WIDTH),
-    NewRPid = lists:nth(NewRIdx + 1, AllPids),
-    OldNode = node(OldRPid),
-    NewNode = node(NewRPid),
-    if
-        OldNode /= NewNode ->
-            io:format("*DEBUG* --- Bloon ~p MIGRATING from node ~p to ~p ---~n", [BloonId, OldNode, NewNode]),
-            NewRegionId = NewRIdx,
-            % Pass the current balloon's ID to maintain consistency
-            gen_server:cast(NewRPid, {spawn_bloon_migration, H, Idx, CurrentPos, AllPids, NewRegionId, BloonId}),
-            {move_to_new_node, NewRPid};
+    if 
+        NewRIdx < 0 -> 
+            io:format("*DEBUG* Balloon ~p trying to go to negative region ~p, keeping in region 0~n", [BloonId, NewRIdx]),
+            {stay, OldRPid};
+        NewRIdx >= length(AllPids) ->
+            io:format("*DEBUG* Balloon ~p trying to go to region ~p beyond max, keeping in current~n", [BloonId, NewRIdx]),
+            {stay, OldRPid};
         true ->
-            NewRegionId = NewRIdx,
+            NewRPid = lists:nth(NewRIdx + 1, AllPids),
+            OldNode = node(OldRPid),
+            NewNode = node(NewRPid),
+            io:format("*DEBUG* Balloon ~p at pos ~p: OldRegion=~p, NewRegion=~p, OldNode=~p, NewNode=~p~n", 
+                     [BloonId, CurrentPos, OldRegionId, NewRIdx, OldNode, NewNode]),
             if
-                NewRegionId /= OldRegionId ->
-                    db:write_bloon(#bloon{id=BloonId, health=H, pos=CurrentPos, index=Idx, region_id=NewRegionId});
-                true -> ok
-            end,
-            {stay, OldRPid}
+                OldNode /= NewNode ->
+                    io:format("*DEBUG* --- Bloon ~p MIGRATING from node ~p to ~p ---~n", [BloonId, OldNode, NewNode]),
+                    NewRegionId = NewRIdx,
+                    % First spawn on new node, then stop this process
+                    gen_server:cast(NewRPid, {spawn_bloon_migration, H, Idx, CurrentPos, AllPids, NewRegionId, BloonId}),
+                    % Use a small delay to ensure new process starts before old one stops
+                    timer:sleep(50),
+                    {stop_and_migrate, NewRPid};
+                OldRPid /= NewRPid ->
+                    % Same node, different region - just update region
+                    io:format("*DEBUG* Balloon ~p switching regions on same node: ~p -> ~p~n", [BloonId, OldRegionId, NewRIdx]),
+                    NewRegionId = NewRIdx,
+                    db:write_bloon(#bloon{id=BloonId, health=H, pos=CurrentPos, index=Idx, region_id=NewRegionId}),
+                    {stay, NewRPid};  % Switch to new region PID
+                true ->
+                    % Same region, just update position if needed
+                    NewRegionId = NewRIdx,
+                    if
+                        NewRegionId /= OldRegionId ->
+                            db:write_bloon(#bloon{id=BloonId, health=H, pos=CurrentPos, index=Idx, region_id=NewRegionId});
+                        true -> ok
+                    end,
+                    {stay, OldRPid}
+            end
     end.
 
 
