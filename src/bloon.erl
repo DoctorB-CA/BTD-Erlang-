@@ -42,13 +42,13 @@ init([{migrate, Health, Index, Pos, BloonId}, RPid, AllRPids]) ->
     io:format("*DEBUG* Migrated balloon ~p to node ~p at position ~p~n", [BloonId, node(), Pos]),
     {ok, moving, Data, {state_timeout, ?MOVE_INTERVAL, move}}.
 
-terminate(normal, moving, #state{id = _BloonId, current_region_pid = _RPid}) ->
-    % Don't delete from DB - this is a migration, the new process will handle the record
-    io:format("*DEBUG* Balloon process terminating due to migration~n"),
+terminate(normal, moving, #state{id = BloonId, current_region_pid = _RPid}) ->
+    % This is a normal migration - DON'T delete from DB
+    io:format("*DEBUG* Balloon ~p process terminating due to migration (normal)~n", [BloonId]),
     ok;
 terminate(_Reason, moving, #state{id = BloonId, current_region_pid = _RPid}) ->
-    % Delete from DB - this is a real death (health ≤ 0 or other error)
-    io:format("*DEBUG* Balloon ~p dying, deleting from DB~n", [BloonId]),
+    % This is a real death (health ≤ 0 or error) - DELETE from DB
+    io:format("*DEBUG* Balloon ~p dying due to ~p, deleting from DB~n", [BloonId, _Reason]),
     db:delete_bloon(BloonId),
     ok.
 
