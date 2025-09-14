@@ -206,34 +206,35 @@ handle_cast(_,S)->{noreply,S}.
 
 
 handle_info(#wx{event=#wxPaint{}},S)->
-    DC=wxPaintDC:new(S#state.board),
+    DC=wxBufferedPaintDC:new(S#state.board),  % Use buffered painting for smoothness
     wxDC:drawBitmap(DC,S#state.map_bitmap,{0,0},[]),
+    
+    % Draw monkeys
     maps:foreach(fun(_,{X,Y,T})->
         BMP=maps:get(T,S#state.bitmaps),
         W=wxBitmap:getWidth(BMP),
         H=wxBitmap:getHeight(BMP),
         wxDC:drawBitmap(DC,BMP,{X-round(W/2),Y-round(H/2)},[{useMask,true}])
-    end,
-    S#state.monkeys),
+    end, S#state.monkeys),
 
-        maps:foreach(fun(_,{T,{X,Y}})->
-            BMP=maps:get(T,S#state.bitmaps),
-            W=wxBitmap:getWidth(BMP),
-            H=wxBitmap:getHeight(BMP),
-            wxDC:drawBitmap(DC,BMP,{X-round(W/2),Y-round(H/2)},[{useMask,true}])
-        end,
-        S#state.balloons),
+    % Draw balloons (batch process)
+    maps:foreach(fun(_,{T,{X,Y}})->
+        BMP=maps:get(T,S#state.bitmaps),
+        W=wxBitmap:getWidth(BMP),
+        H=wxBitmap:getHeight(BMP),
+        wxDC:drawBitmap(DC,BMP,{X-round(W/2),Y-round(H/2)},[{useMask,true}])
+    end, S#state.balloons),
 
-        maps:foreach(fun(_,{T,{X,Y}})->
-            BMP=maps:get(T,S#state.bitmaps),
-            W=wxBitmap:getWidth(BMP),
-            H=wxBitmap:getHeight(BMP),
-            wxDC:drawBitmap(DC,BMP,{X-round(W/2),Y-round(H/2)},[{useMask,true}])
-        end,
-        S#state.darts),
+    % Draw darts
+    maps:foreach(fun(_,{T,{X,Y}})->
+        BMP=maps:get(T,S#state.bitmaps),
+        W=wxBitmap:getWidth(BMP),
+        H=wxBitmap:getHeight(BMP),
+        wxDC:drawBitmap(DC,BMP,{X-round(W/2),Y-round(H/2)},[{useMask,true}])
+    end, S#state.darts),
 
-        wxPaintDC:destroy(DC),
-        {noreply,S};
+    wxBufferedPaintDC:destroy(DC),  % Destroy buffered DC
+    {noreply,S};
 
 handle_info(#wx{event=#wxMouse{type=left_down,x=_X,y=_Y}},S=#state{placing=none})->
     io:format("GUI: Please select a monkey type first.~n"),

@@ -1,13 +1,25 @@
 -module(db).
 -export([init/1]).
 -export([write_bloon/1, delete_bloon/1, write_monkey/1, delete_monkey/1]).
--export([get_bloons_in_regions/1]).
+-export([get_bloons_in_regions/1, get_all_bloons/0]).
 
 -include("dbr.hrl").
 
 %% ===================================================================
 %% Public API
 %% ===================================================================
+
+%% @doc Fetches all bloon records from the database.
+get_all_bloons() ->
+    F = fun() ->
+        mnesia:match_object(bloon, #bloon{_ = '_'}, read)
+    end,
+    case mnesia:transaction(F) of
+        {atomic, Result} -> Result;
+        {aborted, Reason} ->
+            io:format("*ERROR* DB transaction aborted in get_all_bloons: ~p~n", [Reason]),
+            []
+    end.
 
 %% @doc Fetches all bloon records for a given list of region IDs.
 get_bloons_in_regions(RegionIds) ->

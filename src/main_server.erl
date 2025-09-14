@@ -14,7 +14,7 @@
 
 start_link(AllNodes) -> gen_server:start_link({local, ?MODULE}, ?MODULE, [AllNodes], []).
 add_monkey(Type, Pos, Range) -> gen_server:cast(?MODULE, {add_monkey, Type, Pos, Range}).
-add_bloon(Health) ->     timer:sleep(balloon_cooldown), % cooldown
+add_bloon(Health) ->     timer:sleep(?balloon_cooldown), % cooldown
                     gen_server:cast(?MODULE, {add_bloon,Health}).
 
 init([AllNodes]) ->
@@ -32,7 +32,7 @@ init([AllNodes]) ->
     io:format("Main Server: All regions are up and running with PIDs: ~p~n", [RegionPids]),
     
     % Start timer for GUI updates - balanced for performance and smoothness
-    timer:send_interval(150, self(), update_gui_balloons),
+    timer:send_interval(500, self(), update_gui_balloons),
     
     {ok, #state{region_pids = RegionPids}}.
 
@@ -82,22 +82,27 @@ handle_call(_Request, _From, State) -> {reply, ok, State}.
 
 handle_info(update_gui_balloons, State) ->
     % Get all bloons from database and update GUI
-    AllBloons = db:get_bloons_in_regions([0, 1, 2, 3]), % Get from all regions
+    AllBloons = db:get_all_bloons(), % Get ALL balloons from database
     
-    % Convert bloon records to GUI format
-    BalloonMap = lists:foldl(
-    fun(BloonRecord, Acc) ->
-        #bloon{id=Id, pos=Pos} = BloonRecord,
-        maps:put(Id, {red, Pos}, Acc)
-    end,
-    #{},
-    AllBloons
-),
-    
-    % Send batch update to GUI
-    
-    gui:update_balloons(BalloonMap),
-    {noreply, State};
+    % Convert bloon records to GUI format (only if we have balloons)
+    case AllBloons of
+        [] -> 
+            gui:update_balloons(#{}),
+            {noreply, State};
+        _ ->
+            BalloonMap = lists:foldl(
+                fun(BloonRecord, Acc) ->
+                    #bloon{id=Id, pos=Pos} = BloonRecord,
+                    maps:put(Id, {red, Pos}, Acc)
+                end,
+                #{},
+                AllBloons
+            ),
+            
+            % Send batch update to GUI
+            gui:update_balloons(BalloonMap),
+            {noreply, State}
+    end;
 
 handle_info(_Info, State) ->
     {noreply, State}.
