@@ -6,7 +6,7 @@
 -export([start_link/3, start_link_migration/6, get_pos/1]).
 -export([init/1, callback_mode/0, terminate/3, moving/3]).
 
--define(MOVE_INTERVAL, 150). % Move every 150ms - slightly slower for smoother visual updates
+-define(MOVE_INTERVAL, 100). % Move every 100ms - faster balloon movement
 -define(REGION_WIDTH, 200).
 
 -record(state, {id, index, health, pos, current_region_pid, region_pids, region_id}).

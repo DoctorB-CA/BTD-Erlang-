@@ -18,7 +18,7 @@
 -define(CANVAS_HEIGHT, 600).
 -define(BALLOON_WIDTH, 40).
 -define(BALLOON_HEIGHT, 40).
--define(TICK_INTERVAL, 200).  % Update every 200ms - smoother but not overwhelming
+-define(TICK_INTERVAL, 50).  % Update every 50ms for 20 FPS - better for many balloons
 -define(DART_WIDTH, 35).
 -define(DART_HEIGHT, 25).
 -define(FULL_MAP_WIDTH, ?CANVAS_WIDTH * 4).
@@ -199,41 +199,43 @@ handle_cast(clear_board,S)->
     {noreply,S#state{monkeys=#{},balloons=#{},darts=#{}}};
 
 handle_cast({update_balloons, BalloonMap}, S) ->
-    wxWindow:refresh(S#state.board),
-    {noreply, S#state{balloons=BalloonMap}};
+    % SIMPLE APPROACH: Just update and refresh - no fancy logic needed
+    wxWindow:refresh(S#state.board),  % Tell wxErlang to redraw
+    {noreply, S#state{balloons=BalloonMap}};  % Store new balloon positions
 
 handle_cast(_,S)->{noreply,S}.
 
 
 handle_info(#wx{event=#wxPaint{}},S)->
-    DC=wxBufferedPaintDC:new(S#state.board),  % Use buffered painting for smoothness
+    DC=wxBufferedPaintDC:new(S#state.board),  
+    
+    % SIMPLE: Draw background once
     wxDC:drawBitmap(DC,S#state.map_bitmap,{0,0},[]),
     
-    % Draw monkeys
-    maps:foreach(fun(_,{X,Y,T})->
-        BMP=maps:get(T,S#state.bitmaps),
-        W=wxBitmap:getWidth(BMP),
-        H=wxBitmap:getHeight(BMP),
+    % SIMPLE: Pre-calculate bitmap sizes (avoid repeated wxBitmap calls)
+    BitmapCache = maps:map(fun(_, BMP) ->
+        {BMP, wxBitmap:getWidth(BMP), wxBitmap:getHeight(BMP)}
+    end, S#state.bitmaps),
+    
+    % SIMPLE: Draw all monkeys
+    lists:foreach(fun({_Id, {X,Y,T}}) ->
+        {BMP, W, H} = maps:get(T, BitmapCache),
         wxDC:drawBitmap(DC,BMP,{X-round(W/2),Y-round(H/2)},[{useMask,true}])
-    end, S#state.monkeys),
+    end, maps:to_list(S#state.monkeys)),
 
-    % Draw balloons (batch process)
-    maps:foreach(fun(_,{T,{X,Y}})->
-        BMP=maps:get(T,S#state.bitmaps),
-        W=wxBitmap:getWidth(BMP),
-        H=wxBitmap:getHeight(BMP),
+    % SIMPLE: Draw all balloons
+    lists:foreach(fun({_Id, {T,{X,Y}}}) ->
+        {BMP, W, H} = maps:get(T, BitmapCache),
         wxDC:drawBitmap(DC,BMP,{X-round(W/2),Y-round(H/2)},[{useMask,true}])
-    end, S#state.balloons),
+    end, maps:to_list(S#state.balloons)),
 
-    % Draw darts
-    maps:foreach(fun(_,{T,{X,Y}})->
-        BMP=maps:get(T,S#state.bitmaps),
-        W=wxBitmap:getWidth(BMP),
-        H=wxBitmap:getHeight(BMP),
+    % SIMPLE: Draw all darts
+    lists:foreach(fun({_Id, {T,{X,Y}}}) ->
+        {BMP, W, H} = maps:get(T, BitmapCache),
         wxDC:drawBitmap(DC,BMP,{X-round(W/2),Y-round(H/2)},[{useMask,true}])
-    end, S#state.darts),
+    end, maps:to_list(S#state.darts)),
 
-    wxBufferedPaintDC:destroy(DC),  % Destroy buffered DC
+    wxBufferedPaintDC:destroy(DC),
     {noreply,S};
 
 handle_info(#wx{event=#wxMouse{type=left_down,x=_X,y=_Y}},S=#state{placing=none})->

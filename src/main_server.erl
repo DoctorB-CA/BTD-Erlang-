@@ -31,8 +31,8 @@ init([AllNodes]) ->
 
     io:format("Main Server: All regions are up and running with PIDs: ~p~n", [RegionPids]),
     
-    % Start timer for GUI updates - balanced for performance and smoothness
-    timer:send_interval(500, self(), update_gui_balloons),
+    % Start timer for GUI updates - 20 FPS for better performance with many balloons
+    timer:send_interval(50, self(), update_gui_balloons),
     
     {ok, #state{region_pids = RegionPids}}.
 
@@ -81,34 +81,25 @@ handle_cast({add_bloon, Health}, State = #state{region_pids = Pids}) ->
 handle_call(_Request, _From, State) -> {reply, ok, State}.
 
 handle_info(update_gui_balloons, State) ->
-    % Get all bloons from database and update GUI
-    AllBloons = db:get_all_bloons(), % Get ALL balloons from database
-    
-    % Convert bloon records to GUI format (only if we have balloons)
-    case AllBloons of
-        [] -> 
-            gui:update_balloons(#{}),
-            {noreply, State};
-        _ ->
-            BalloonMap = lists:foldl(
-                fun(BloonRecord, Acc) ->
-                    #bloon{id=Id, pos=Pos} = BloonRecord,
-                    maps:put(Id, {red, Pos}, Acc)
-                end,
-                #{},
-                AllBloons
-            ),
-            
-            % Send batch update to GUI
-            gui:update_balloons(BalloonMap),
-            {noreply, State}
-    end;
+    % SIMPLE APPROACH: Just grab everything and update everything
+    % This is the most efficient way for high-frequency updates
+    AllBloons = db:get_all_bloons(),  % 1 database query
+    update_gui_with_balloons(AllBloons),  % 1 message to GUI
+    {noreply, State};
 
 handle_info(_Info, State) ->
     {noreply, State}.
 
 
 %% --- HELPER FUNCTION ---
+update_gui_with_balloons(AllBloons) ->
+    % SIMPLE: Convert all balloons to GUI format in one shot
+    BalloonMap = maps:from_list([
+        {Id, {red, Pos}} || #bloon{id=Id, pos=Pos} <- AllBloons
+    ]),
+    % SIMPLE: Send everything to GUI in one message
+    gui:update_balloons(BalloonMap).
+
 get_remote_pid(_NameNode, 0) ->
     erlang:error({could_not_find_remote_pid, _NameNode});
 get_remote_pid({Name, Node} = NameNode, Retries) ->
