@@ -32,7 +32,7 @@ handle_call({find_bloon, MonkeyPos, Range}, _From, State = #region_state{id = My
     
     Reply = case Closest of
         none -> {error, not_found};
-        {_Dist, BloonPid} -> {ok, BloonPid}
+        {_Dist, BloonId} -> {ok, BloonId}
     end,
     {reply, Reply, State};
 
@@ -44,6 +44,7 @@ handle_cast({spawn_monkey,MT, Pos, Range}, State = #region_state{id = RegionId})
     {noreply, State};
 
 handle_cast({spawn_bloon, Health, AllRegionPids, _RegionId}, State) ->
+    io:format("*DEBUG* ~p: Spawning bloon with health ~p.~n", [node(), Health]),
     bloon:start_link(Health, self(), AllRegionPids),
     {noreply, State};
 
@@ -56,13 +57,13 @@ distance({X1, Y1}, {X2, Y2}) -> math:sqrt(math:pow(X2 - X1, 2) + math:pow(Y2 - Y
 
 find_closest_bloon(_, _, [], Closest) -> Closest;
 find_closest_bloon(MonkeyPos, Range, [Bloon | Rest], Closest) ->
-    #bloon{id=Pid, health=_Health, index=_Idx, pos=BloonPos, region_id=_RegionId} = Bloon,
+    #bloon{id=BloonId, health=_Health, index=_Idx, pos=BloonPos, region_id=_RegionId} = Bloon,
     Dist = distance(MonkeyPos, BloonPos),
     NewClosest = if
         Dist =< Range ->
             case Closest of
-                none -> {Dist, Pid};
-                {ClosestDist, _} when Dist < ClosestDist -> {Dist, Pid};
+                none -> {Dist, BloonId};
+                {ClosestDist, _} when Dist < ClosestDist -> {Dist, BloonId};
                 _ -> Closest
             end;
         true ->

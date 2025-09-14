@@ -2,6 +2,34 @@
 %% BTD-Erlang Distributed Startup Script
 %% ===================================================================
 %%
+%% OPTION 1: SINGLE NODE TESTING (for development/debugging)
+%% ===================================================================
+
+%% Step 1: Define nodes (for single node, use main node for all regions)
+MainNode = node().
+AllNodes = [MainNode, MainNode, MainNode, MainNode].  % Use main node for all 4 regions
+
+%% Step 2: Initialize the Database
+db:init([MainNode]).
+
+%% Step 3: Start region servers locally on main node
+worker_supervisor:start_as_root(0, 4).
+worker_supervisor:start_as_root(1, 4).
+worker_supervisor:start_as_root(2, 4).
+worker_supervisor:start_as_root(3, 4).
+
+%% Step 4: Start the Main Supervisor and GUI
+main_supervisor:start_link([MainNode, MainNode, MainNode]).
+gui:start_link().
+
+%% Step 5: Test the system
+main_server:add_monkey(ground_monkey, {40, 150}, 80).
+main_server:add_bloon(5).
+
+%% ===================================================================
+%% OPTION 2: DISTRIBUTED SETUP (for production)
+%% ===================================================================
+%%
 %% Run these commands one-by-one in the Erlang shell of the MAIN node
 %% after starting the shells on all worker nodes.
 %%
@@ -39,12 +67,21 @@ rpc:call(Worker4, worker_supervisor, start_as_root, [3, 4]).
 main_supervisor:start_link(AllWorkerNodes).
 gui:start_link().
 
+%% Step 7: Test the System by adding a monkey
+main_server:add_monkey(ground_monkey, {40, 150}, 80).
+
+%% Step 8: Test the System by adding balloons
+%% Balloons will generate their own path internally and move every 100ms
+%% GUI will update at 20 FPS (50ms) to show smooth movement
+main_server:add_bloon(5).
+
 
 %% Step 7: Test the System by adding a monkey
 main_server:add_monkey(ground_monkey, {40, 150}, 80).
 
 
-%% Step 8: Test the System by adding a bloon
-%% No need to pass a path, balloon will generate its own path internally
-main_server:add_bloon([], 17).
+%% Step 8: Test the System by adding balloons
+%% Balloons will generate their own path internally and move every 100ms
+%% GUI will update at 20 FPS (50ms) to show smooth movement
+main_server:add_bloon(5).
 
