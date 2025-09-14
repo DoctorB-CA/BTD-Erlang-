@@ -6,13 +6,16 @@
 
 -define(NUM_REGIONS, 4).
 -define(REGION_WIDTH, 200).
+-define(balloon_cooldown, 1000).
+
 
 % The state will now hold the actual PIDs of the remote regions.
 -record(state, { region_pids = [] }).
 
 start_link(AllNodes) -> gen_server:start_link({local, ?MODULE}, ?MODULE, [AllNodes], []).
 add_monkey(Type, Pos, Range) -> gen_server:cast(?MODULE, {add_monkey, Type, Pos, Range}).
-add_bloon(Health) -> gen_server:cast(?MODULE, {add_bloon,Health}).
+add_bloon(Health) ->     timer:sleep(balloon_cooldown), % cooldown
+                    gen_server:cast(?MODULE, {add_bloon,Health}).
 
 init([AllNodes]) ->
     io:format("Main Server started. Waiting for all regions to report in...~n"),
@@ -118,12 +121,8 @@ get_remote_pid({Name, Node} = NameNode, Retries) ->
 generate_level1() ->
     %% Step 8: Test the System by adding a bloon
     main_server:add_bloon(5),
-    timer:sleep(500), % cooldown
     main_server:add_bloon(5),
-    timer:sleep(500), % cooldown
     main_server:add_bloon(5),
-    timer:sleep(500), % cooldown
     main_server:add_bloon(5),
-    timer:sleep(500), % cooldown
     main_server:add_bloon(5).
 

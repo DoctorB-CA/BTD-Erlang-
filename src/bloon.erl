@@ -3,10 +3,10 @@
 
 -include("dbr.hrl").
 
--export([start_link/3, get_pos/1]).
+-export([start_link/3, start_link_migration/6, get_pos/1]).
 -export([init/1, callback_mode/0, terminate/3, moving/3]).
 
--define(MOVE_INTERVAL, 200).  % Move every 200ms instead of 2000ms
+-define(MOVE_INTERVAL, 100). % Move every 100ms
 -define(REGION_WIDTH, 200).
 
 -record(state, {id, index, health, pos, current_region_pid, region_pids, region_id}).
@@ -17,6 +17,9 @@ start_link(Health, RPid, AllRPids) ->
     BloonId = erlang:make_ref(),
     gen_statem:start_link({global, BloonId}, ?MODULE, [{start, Health, BloonId}, RPid, AllRPids], []).
 
+start_link_migration(Health, Index, Pos, RPid, AllRPids, OriginalBloonId) ->
+    gen_statem:start_link({global, OriginalBloonId}, ?MODULE, [{migrate, Health, Index, Pos, OriginalBloonId}, RPid, AllRPids], []).
+
 callback_mode() -> state_functions.
 
 init([{start, Health, BloonId}, RPid, AllRPids]) ->
@@ -26,9 +29,26 @@ init([{start, Health, BloonId}, RPid, AllRPids]) ->
     db:write_bloon(BloonRecord),
     Data = #state{id=BloonId, health=Health, pos=StartPos, index=1,
                   current_region_pid=RPid, region_pids=AllRPids, region_id=0},
+    {ok, moving, Data, {state_timeout, ?MOVE_INTERVAL, move}};
+
+init([{migrate, Health, Index, Pos, BloonId}, RPid, AllRPids]) ->
+    NewX = element(1, Pos),
+    NewRegionId = trunc(NewX / ?REGION_WIDTH),
+    % Update the existing balloon record (don't create a new one)
+    BloonRecord = #bloon{id=BloonId, health=Health, index=Index, pos=Pos, region_id=NewRegionId},
+    db:write_bloon(BloonRecord),
+    Data = #state{id=BloonId, health=Health, pos=Pos, index=Index,
+                  current_region_pid=RPid, region_pids=AllRPids, region_id=NewRegionId},
+    io:format("*DEBUG* Migrated balloon ~p to node ~p at position ~p~n", [BloonId, node(), Pos]),
     {ok, moving, Data, {state_timeout, ?MOVE_INTERVAL, move}}.
 
+terminate(normal, moving, #state{id = _BloonId, current_region_pid = _RPid}) ->
+    % Don't delete from DB - this is a migration, the new process will handle the record
+    io:format("*DEBUG* Balloon process terminating due to migration~n"),
+    ok;
 terminate(_Reason, moving, #state{id = BloonId, current_region_pid = _RPid}) ->
+    % Delete from DB - this is a real death (health ≤ 0 or other error)
+    io:format("*DEBUG* Balloon ~p dying, deleting from DB~n", [BloonId]),
     db:delete_bloon(BloonId),
     ok.
 
@@ -63,7 +83,7 @@ moving(state_timeout, move, Data=#state{id=BloonId, health=H, index=PI, region_i
             end
     end.
 
-handle_region_crossing(#state{pos = {NewX, _}, index = Idx, health = H, region_pids = AllPids, current_region_pid = OldRPid, region_id = OldRegionId}) ->
+handle_region_crossing(#state{pos = {NewX, _} = CurrentPos, index = Idx, health = H, region_pids = AllPids, current_region_pid = OldRPid, region_id = OldRegionId}) ->
     NewRIdx = trunc(NewX / ?REGION_WIDTH),
     NewRPid = lists:nth(NewRIdx + 1, AllPids),
     OldNode = node(OldRPid),
@@ -71,16 +91,15 @@ handle_region_crossing(#state{pos = {NewX, _}, index = Idx, health = H, region_p
     if
         OldNode /= NewNode ->
             io:format("*DEBUG* --- Bloon ~p MIGRATING from node ~p to ~p ---~n", [self(), OldNode, NewNode]),
-            Path = get_path(),
-            RestOfPath = lists:nthtail(Idx - 1, Path),
             NewRegionId = NewRIdx,
-            gen_server:cast(NewRPid, {spawn_bloon, RestOfPath, H, AllPids, NewRegionId}),
+            % Pass the current balloon's ID to maintain consistency
+            gen_server:cast(NewRPid, {spawn_bloon_migration, H, Idx, CurrentPos, AllPids, NewRegionId, self()}),
             {move_to_new_node, NewRPid};
         true ->
             NewRegionId = NewRIdx,
             if
                 NewRegionId /= OldRegionId ->
-                    db:write_bloon(#bloon{id=self(), health=H, pos=lists:nth(Idx, get_path()), index=Idx, region_id=NewRegionId});
+                    db:write_bloon(#bloon{id=self(), health=H, pos=CurrentPos, index=Idx, region_id=NewRegionId});
                 true -> ok
             end,
             {stay, OldRPid}
