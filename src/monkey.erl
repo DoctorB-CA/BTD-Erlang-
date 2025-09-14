@@ -43,5 +43,13 @@ attacking(state_timeout, cooldown_over, Data = #data{type=MT,pos = MyPos}) ->
     io:format("~p Monkey at ~p finished cooldown. Resuming scan.~n", [MT, MyPos]),
     {next_state, searching, Data, {state_timeout, 0, scan}}.
 
-fire_arrow(MyPos, TargetPid) ->
-    arrow:fire(MyPos, TargetPid).
+fire_arrow(MyPos, TargetId) ->
+    % Determine dart type based on monkey type
+    DartType = case element(1, MyPos) rem 4 of  % Simple logic for demo
+        0 -> ground_dart;
+        1 -> water_dart;
+        2 -> fire_dart;
+        _ -> air_dart
+    end,
+    % Start arrow FSM that will manage itself in the database
+    arrow:start_link(DartType, MyPos, TargetId, 0).

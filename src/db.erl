@@ -1,6 +1,7 @@
 -module(db).
 -export([init/1]).
 -export([write_bloon/1, delete_bloon/1, write_monkey/1, delete_monkey/1]).
+-export([write_dart/1, delete_dart/1, get_all_darts/0]).
 -export([get_bloons_in_regions/1, get_all_bloons/0]).
 
 -include("dbr.hrl").
@@ -8,6 +9,18 @@
 %% ===================================================================
 %% Public API
 %% ===================================================================
+
+%% @doc Fetches all dart records from the database.
+get_all_darts() ->
+    F = fun() ->
+        mnesia:match_object(dart, #dart{_ = '_'}, read)
+    end,
+    case mnesia:transaction(F) of
+        {atomic, Result} -> Result;
+        {aborted, Reason} ->
+            io:format("*ERROR* DB transaction aborted in get_all_darts: ~p~n", [Reason]),
+            []
+    end.
 
 %% @doc Fetches all bloon records from the database.
 get_all_bloons() ->
@@ -47,6 +60,17 @@ write_bloon(BloonRecord = #bloon{}) ->
 %% @doc Deletes a bloon record from the database.
 delete_bloon(BloonId) ->
     Oid = {bloon, BloonId},
+    F = fun() -> mnesia:delete(Oid) end,
+    mnesia:transaction(F).
+
+%% @doc Persists a dart record to the database.
+write_dart(DartRecord = #dart{}) ->
+    F = fun() -> mnesia:write(dart, DartRecord, write) end,
+    mnesia:transaction(F).
+
+%% @doc Deletes a dart record from the database.
+delete_dart(DartId) ->
+    Oid = {dart, DartId},
     F = fun() -> mnesia:delete(Oid) end,
     mnesia:transaction(F).
 
@@ -113,7 +137,7 @@ init(AllNodes) ->
     create_tables(AllNodes),
 
     io:format("DB: Waiting for tables to be ready on all worker nodes...~n"),
-    {Replies, BadNodes} = rpc:multicall(WorkerNodes, mnesia, wait_for_tables, [[bloon, monkey], 20000]),
+    {Replies, BadNodes} = rpc:multicall(WorkerNodes, mnesia, wait_for_tables, [[bloon, monkey, dart], 20000]),
     io:format("DB: Worker wait_for_tables replies: ~p~n", [Replies]),
     io:format("DB: Worker nodes that failed RPC: ~p~n", [BadNodes]),
 
@@ -143,6 +167,11 @@ create_tables(AllNodes) ->
         {ram_copies, WorkerNodes},
         {attributes, record_info(fields, monkey)}
     ],
+    DartProps = [
+        {disc_copies, [MainNode]},
+        {ram_copies, WorkerNodes},
+        {attributes, record_info(fields, dart)}
+    ],
 
     % Create bloon table. This is already a transaction.
     case mnesia:create_table(bloon, BloonProps) of
@@ -164,6 +193,16 @@ create_tables(AllNodes) ->
             io:format("DB: Error creating 'monkey' table: ~p~n", [Reason2])
     end,
 
+    % Create dart table. This is already a transaction.
+    case mnesia:create_table(dart, DartProps) of
+        {atomic, ok} ->
+            io:format("DB: Table 'dart' created successfully.~n");
+        {aborted, {already_exists, dart}} ->
+            io:format("DB: Table 'dart' already exists.~n");
+        {aborted, Reason3} ->
+            io:format("DB: Error creating 'dart' table: ~p~n", [Reason3])
+    end,
+
     io:format("DB: Waiting for tables to be loaded on main node...~n"),
-    mnesia:wait_for_tables([bloon, monkey], 20000).
+    mnesia:wait_for_tables([bloon, monkey, dart], 20000).
 %% 

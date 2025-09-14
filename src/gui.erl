@@ -6,7 +6,7 @@
 
 -export([start_link/0, add_monkey/4, delete_monkey/1, add_balloon/3, delete_balloon/1, move_balloon/2,
          add_dart/3, delete_dart/1, move_dart/2, change_bananas/1, lose_game/0, clear_board/0,
-         refresh/0, update_balloons/1]).
+         refresh/0, update_balloons/1, update_darts/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 -export([load_assets/3]).
 
@@ -48,6 +48,7 @@ change_bananas(Amount) -> gen_server:cast(gui, {change_bananas, Amount}).
 lose_game() -> gen_server:cast(gui, lose_game).
 clear_board() -> gen_server:cast(gui, clear_board).
 update_balloons(BalloonMap) -> gen_server:cast(gui, {update_balloons, BalloonMap}).
+update_darts(DartMap) -> gen_server:cast(gui, {update_darts, DartMap}).
 
 init([]) ->
     wx:new(),
@@ -202,6 +203,10 @@ handle_cast({update_balloons, BalloonMap}, S) ->
     % SIMPLE APPROACH: Just update and refresh - no fancy logic needed
     wxWindow:refresh(S#state.board),  % Tell wxErlang to redraw
     {noreply, S#state{balloons=BalloonMap}};  % Store new balloon positions
+
+handle_cast({update_darts, DartMap}, S) ->
+    % SIMPLE APPROACH: Just update darts
+    {noreply, S#state{darts=DartMap}};  % Store new dart positions
 
 handle_cast(_,S)->{noreply,S}.
 

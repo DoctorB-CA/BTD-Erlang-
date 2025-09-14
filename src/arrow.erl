@@ -1,47 +1,83 @@
 -module(arrow).
--export([fire/2]).
+-behaviour(gen_statem).
+-include("dbr.hrl").
+
+-export([start_link/4]).
+-export([init/1, callback_mode/0, flying/3]).
 
 -define(SPEED, 10).
 -define(TICK_RATE, 50).
 -define(MAX_RANGE, 300).
--define(HIT_THRESHOLD, 8).
+-define(HIT_THRESHOLD, 20).
 
-fire(StartPos, TargetId) ->
-    spawn(fun() -> init(StartPos, TargetId) end).
+-record(data, {id, type, pos, target_id, region_id, steps_left}).
 
-init(StartPos, TargetId) ->
-    % The target is now a globally registered name, not a PID
-    TargetPid = global:whereis_name(TargetId),
-    link(TargetPid),
-    case bloon:get_pos(TargetPid) of
-        {ok, TargetPos} ->
-            Vector = calculate_vector(StartPos, TargetPos),
-            MaxSteps = round(?MAX_RANGE / ?SPEED),
-            loop(StartPos, TargetPid, Vector, MaxSteps);
-        {error, _Reason} ->
-            exit(normal)
-    end.
+start_link(DartType, StartPos, TargetId, RegionId) ->
+    gen_statem:start_link(?MODULE, [DartType, StartPos, TargetId, RegionId], []).
 
-loop(CurrentPos, TargetPid, Vector, StepsLeft) ->
+callback_mode() -> state_functions.
+
+init([DartType, StartPos, TargetId, RegionId]) ->
+    io:format("Arrow ~p starting at ~p targeting ~p~n", [DartType, StartPos, TargetId]),
+    
+    % Create unique ID and store in database
+    DartId = erlang:make_ref(),
+    DartRecord = #dart{id=DartId, type=DartType, pos=StartPos, target_id=TargetId, region_id=RegionId},
+    db:write_dart(DartRecord),
+    
+    MaxSteps = round(?MAX_RANGE / ?SPEED),
+    Data = #data{id=DartId, type=DartType, pos=StartPos, target_id=TargetId, region_id=RegionId, steps_left=MaxSteps},
+    
+    {ok, flying, Data, {state_timeout, 0, move}}.
+
+flying(state_timeout, move, Data = #data{id=DartId, pos=CurrentPos, target_id=TargetId, steps_left=StepsLeft}) ->
     if
-            %%bar put here the arrow moves
         StepsLeft =< 0 ->
-            exit(normal);
+            % Out of range, remove from database
+            db:delete_dart(DartId),
+            {stop, normal, Data};
         true ->
-            timer:sleep(?TICK_RATE),
-            NewPos = move(CurrentPos, Vector),
-            case bloon:get_pos(TargetPid) of
+            % Get target position from database
+            case get_target_position(TargetId) of
                 {ok, TargetPos} ->
+                    % Calculate new position
+                    Vector = calculate_vector(CurrentPos, TargetPos),
+                    NewPos = move_towards(CurrentPos, Vector),
+                    
+                    % Update position in database
+                    UpdatedRecord = #dart{id=DartId, type=Data#data.type, pos=NewPos, 
+                                        target_id=TargetId, region_id=Data#data.region_id},
+                    db:write_dart(UpdatedRecord),
+                    
+                    % Check if hit target
                     Dist = distance(NewPos, TargetPos),
                     if
                         Dist < ?HIT_THRESHOLD ->
-                            TargetPid ! {hit, 1},
-                            exit(normal);
+                            io:format("Dart ~p hit target ~p!~n", [DartId, TargetId]),
+                            % Hit! Remove dart and damage target
+                            db:delete_dart(DartId),
+                            damage_target(TargetId),
+                            {stop, normal, Data};
                         true ->
-                            loop(NewPos, TargetPid, Vector, StepsLeft - 1)
+                            % Continue flying
+                            NewData = Data#data{pos=NewPos, steps_left=StepsLeft-1},
+                            {keep_state, NewData, {state_timeout, ?TICK_RATE, move}}
                     end;
-                {error, _Reason} ->
-                    exit(normal)
+                {error, _} ->
+                    % Target not found, remove dart
+                    db:delete_dart(DartId),
+                    {stop, normal, Data}
+            end
+    end.
+
+%% Helper functions
+get_target_position(TargetId) ->
+    case db:get_all_bloons() of
+        [] -> {error, no_bloons};
+        Bloons ->
+            case lists:keyfind(TargetId, #bloon.id, Bloons) of
+                false -> {error, target_not_found};
+                #bloon{pos=Pos} -> {ok, Pos}
             end
     end.
 
@@ -54,8 +90,25 @@ calculate_vector({X1, Y1}, {X2, Y2}) ->
         true -> {DX / Dist * ?SPEED, DY / Dist * ?SPEED}
     end.
 
-move({X, Y}, {VX, VY}) ->
+move_towards({X, Y}, {VX, VY}) ->
     {X + VX, Y + VY}.
 
 distance({X1, Y1}, {X2, Y2}) ->
     math:sqrt(math:pow(X2 - X1, 2) + math:pow(Y2 - Y1, 2)).
+
+damage_target(TargetId) ->
+    % Find the target and reduce its health
+    case db:get_all_bloons() of
+        [] -> ok;
+        Bloons ->
+            case lists:keyfind(TargetId, #bloon.id, Bloons) of
+                false -> ok;
+                #bloon{health=Health} when Health =< 1 ->
+                    % Balloon destroyed
+                    db:delete_bloon(TargetId);
+                #bloon{health=Health} = Bloon ->
+                    % Reduce health
+                    UpdatedBloon = Bloon#bloon{health=Health-1},
+                    db:write_bloon(UpdatedBloon)
+            end
+    end.

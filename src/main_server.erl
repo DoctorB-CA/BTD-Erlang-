@@ -83,8 +83,9 @@ handle_call(_Request, _From, State) -> {reply, ok, State}.
 handle_info(update_gui_balloons, State) ->
     % SIMPLE APPROACH: Just grab everything and update everything
     % This is the most efficient way for high-frequency updates
-    AllBloons = db:get_all_bloons(),  % 1 database query
-    update_gui_with_balloons(AllBloons),  % 1 message to GUI
+    AllBloons = db:get_all_bloons(),  % 1 database query for balloons
+    AllDarts = db:get_all_darts(),    % 1 database query for darts
+    update_gui_with_objects(AllBloons, AllDarts),  % 1 message to GUI
     {noreply, State};
 
 handle_info(_Info, State) ->
@@ -92,13 +93,18 @@ handle_info(_Info, State) ->
 
 
 %% --- HELPER FUNCTION ---
-update_gui_with_balloons(AllBloons) ->
+update_gui_with_objects(AllBloons, AllDarts) ->
     % SIMPLE: Convert all balloons to GUI format in one shot
     BalloonMap = maps:from_list([
         {Id, {red, Pos}} || #bloon{id=Id, pos=Pos} <- AllBloons
     ]),
-    % SIMPLE: Send everything to GUI in one message
-    gui:update_balloons(BalloonMap).
+    % SIMPLE: Convert all darts to GUI format in one shot
+    DartMap = maps:from_list([
+        {Id, {Type, Pos}} || #dart{id=Id, type=Type, pos=Pos} <- AllDarts
+    ]),
+    % SIMPLE: Send everything to GUI in separate messages
+    gui:update_balloons(BalloonMap),
+    gui:update_darts(DartMap).
 
 get_remote_pid(_NameNode, 0) ->
     erlang:error({could_not_find_remote_pid, _NameNode});
