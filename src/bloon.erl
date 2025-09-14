@@ -6,7 +6,7 @@
 -export([start_link/3, start_link_migration/6, get_pos/1]).
 -export([init/1, callback_mode/0, terminate/3, moving/3]).
 
--define(MOVE_INTERVAL, 100). % Move every 100ms - faster balloon movement
+-define(MOVE_INTERVAL, 50). % Move every 50ms - fast movement for 60 FPS GUI
 -define(REGION_WIDTH, 200).
 
 -record(state, {id, index, health, pos, current_region_pid, region_pids, region_id}).
@@ -54,7 +54,20 @@ terminate(_Reason, moving, #state{id = BloonId, current_region_pid = _RPid}) ->
 
 moving({call, From}, get_pos, Data) ->
     {keep_state, Data, {reply, From, {ok, Data#state.pos}}};
+moving(cast, {hit, Dmg}, Data=#state{id=BloonId, health=H, index=PI, region_id=RId, pos=Pos}) ->
+    NewHealth = H - Dmg,
+    io:format("*DEBUG* Balloon ~p hit for ~p damage! Health: ~p -> ~p~n", [BloonId, Dmg, H, NewHealth]),
+    db:write_bloon(#bloon{id=BloonId, health=NewHealth, index=PI, pos=Pos, region_id=RId}),
+    if
+        NewHealth =< 0 ->
+            io:format("*DEBUG* Bloon ~p died at position: ~p~n", [BloonId, Pos]),
+            db:delete_bloon(BloonId),
+            {stop, normal, Data#state{health=NewHealth}};
+        true ->
+            {keep_state, Data#state{health=NewHealth}}
+    end;
 moving(info, {hit, Dmg}, Data=#state{id=BloonId, health=H, index=PI, region_id=RId, pos=Pos}) ->
+    % Keep old info handler for compatibility
     NewHealth = H - Dmg,
     db:write_bloon(#bloon{id=BloonId, health=NewHealth, index=PI, pos=Pos, region_id=RId}),
     if
@@ -83,23 +96,23 @@ moving(state_timeout, move, Data=#state{id=BloonId, health=H, index=PI, region_i
             end
     end.
 
-handle_region_crossing(#state{pos = {NewX, _} = CurrentPos, index = Idx, health = H, region_pids = AllPids, current_region_pid = OldRPid, region_id = OldRegionId}) ->
+handle_region_crossing(#state{id=BloonId, pos = {NewX, _} = CurrentPos, index = Idx, health = H, region_pids = AllPids, current_region_pid = OldRPid, region_id = OldRegionId}) ->
     NewRIdx = trunc(NewX / ?REGION_WIDTH),
     NewRPid = lists:nth(NewRIdx + 1, AllPids),
     OldNode = node(OldRPid),
     NewNode = node(NewRPid),
     if
         OldNode /= NewNode ->
-            io:format("*DEBUG* --- Bloon ~p MIGRATING from node ~p to ~p ---~n", [self(), OldNode, NewNode]),
+            io:format("*DEBUG* --- Bloon ~p MIGRATING from node ~p to ~p ---~n", [BloonId, OldNode, NewNode]),
             NewRegionId = NewRIdx,
             % Pass the current balloon's ID to maintain consistency
-            gen_server:cast(NewRPid, {spawn_bloon_migration, H, Idx, CurrentPos, AllPids, NewRegionId, self()}),
+            gen_server:cast(NewRPid, {spawn_bloon_migration, H, Idx, CurrentPos, AllPids, NewRegionId, BloonId}),
             {move_to_new_node, NewRPid};
         true ->
             NewRegionId = NewRIdx,
             if
                 NewRegionId /= OldRegionId ->
-                    db:write_bloon(#bloon{id=self(), health=H, pos=CurrentPos, index=Idx, region_id=NewRegionId});
+                    db:write_bloon(#bloon{id=BloonId, health=H, pos=CurrentPos, index=Idx, region_id=NewRegionId});
                 true -> ok
             end,
             {stay, OldRPid}

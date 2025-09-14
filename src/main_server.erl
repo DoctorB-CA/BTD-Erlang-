@@ -14,8 +14,7 @@
 
 start_link(AllNodes) -> gen_server:start_link({local, ?MODULE}, ?MODULE, [AllNodes], []).
 add_monkey(Type, Pos, Range) -> gen_server:cast(?MODULE, {add_monkey, Type, Pos, Range}).
-add_bloon(Health) ->     timer:sleep(?balloon_cooldown), % cooldown
-                    gen_server:cast(?MODULE, {add_bloon,Health}).
+add_bloon(Health) -> gen_server:cast(?MODULE, {add_bloon,Health}).
 
 init([AllNodes]) ->
     io:format("Main Server started. Waiting for all regions to report in...~n"),
@@ -31,8 +30,8 @@ init([AllNodes]) ->
 
     io:format("Main Server: All regions are up and running with PIDs: ~p~n", [RegionPids]),
     
-    % Start timer for GUI updates - 20 FPS for better performance with many balloons
-    timer:send_interval(50, self(), update_gui_balloons),
+    % Start timer for GUI updates - 60 FPS for ultra-smooth visuals, no frame skipping
+    timer:send_interval(16, self(), update_gui_balloons),
     
     {ok, #state{region_pids = RegionPids}}.
 
@@ -121,10 +120,12 @@ get_remote_pid({Name, Node} = NameNode, Retries) ->
 
 %% --- genertes levels  ----
 generate_level1() ->
-    %% Step 8: Test the System by adding a bloon
-    main_server:add_bloon(5),
-    main_server:add_bloon(5),
-    main_server:add_bloon(5),
-    main_server:add_bloon(5),
-    main_server:add_bloon(5).
+    %% Spawn balloons with proper timing to avoid GUI overload
+    spawn(fun() ->
+        lists:foreach(fun(N) ->
+            main_server:add_bloon(5),
+            io:format("Spawned balloon ~p/5~n", [N]),
+            timer:sleep(200)  % 200ms between balloons
+        end, lists:seq(1, 5))
+    end).
 

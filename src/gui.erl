@@ -30,7 +30,8 @@
     banana_text_widget,
     ground_monkey_button_id, water_monkey_button_id, fire_monkey_button_id,
     air_monkey_button_id, avatar_monkey_button_id,
-    start_wave_button_id
+    start_wave_button_id,
+    last_wave_click=0  % Timestamp for button debouncing
 }).
 
 %% API Functions are unchanged...
@@ -228,16 +229,18 @@ handle_info(#wx{event=#wxPaint{}},S)->
         wxDC:drawBitmap(DC,BMP,{X-round(W/2),Y-round(H/2)},[{useMask,true}])
     end, maps:to_list(S#state.monkeys)),
 
-    % SIMPLE: Draw all balloons
+    % SIMPLE: Draw all balloons (round coordinates to integers)
     lists:foreach(fun({_Id, {T,{X,Y}}}) ->
         {BMP, W, H} = maps:get(T, BitmapCache),
-        wxDC:drawBitmap(DC,BMP,{X-round(W/2),Y-round(H/2)},[{useMask,true}])
+        IntX = round(X), IntY = round(Y),
+        wxDC:drawBitmap(DC,BMP,{IntX-round(W/2),IntY-round(H/2)},[{useMask,true}])
     end, maps:to_list(S#state.balloons)),
 
-    % SIMPLE: Draw all darts
+    % SIMPLE: Draw all darts (round coordinates to integers)
     lists:foreach(fun({_Id, {T,{X,Y}}}) ->
         {BMP, W, H} = maps:get(T, BitmapCache),
-        wxDC:drawBitmap(DC,BMP,{X-round(W/2),Y-round(H/2)},[{useMask,true}])
+        IntX = round(X), IntY = round(Y),
+        wxDC:drawBitmap(DC,BMP,{IntX-round(W/2),IntY-round(H/2)},[{useMask,true}])
     end, maps:to_list(S#state.darts)),
 
     wxBufferedPaintDC:destroy(DC),
@@ -277,8 +280,17 @@ handle_info(#wx{id=Id,event=#wxCommand{}},State)->
             {noreply,State#state{placing=avatar_monkey}};
         
         S when S==State#state.start_wave_button_id->
-            io:format("GUI: Start Wave button clicked!~n"),
-            main_server:generate_level1(),{noreply,State};
+            Now = erlang:system_time(millisecond),
+            LastClick = State#state.last_wave_click,
+            if
+                Now - LastClick > 1000 ->  % Prevent clicks within 1 second
+                    io:format("GUI: Start Wave button clicked!~n"),
+                    main_server:generate_level1(),
+                    {noreply, State#state{last_wave_click=Now}};
+                true ->
+                    io:format("GUI: Start Wave button clicked too soon, ignoring~n"),
+                    {noreply, State}
+            end;
 
         _->{noreply,State}
     end;

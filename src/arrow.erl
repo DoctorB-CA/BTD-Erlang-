@@ -97,18 +97,13 @@ distance({X1, Y1}, {X2, Y2}) ->
     math:sqrt(math:pow(X2 - X1, 2) + math:pow(Y2 - Y1, 2)).
 
 damage_target(TargetId) ->
-    % Find the target and reduce its health
-    case db:get_all_bloons() of
-        [] -> ok;
-        Bloons ->
-            case lists:keyfind(TargetId, #bloon.id, Bloons) of
-                false -> ok;
-                #bloon{health=Health} when Health =< 1 ->
-                    % Balloon destroyed
-                    db:delete_bloon(TargetId);
-                #bloon{health=Health} = Bloon ->
-                    % Reduce health
-                    UpdatedBloon = Bloon#bloon{health=Health-1},
-                    db:write_bloon(UpdatedBloon)
-            end
+    % Send damage message directly to the balloon process
+    try
+        gen_statem:cast({global, TargetId}, {hit, 1}),
+        io:format("*DEBUG* Sent damage to balloon ~p~n", [TargetId])
+    catch
+        _:_ ->
+            % Balloon process might be dead/migrated, remove from database
+            io:format("*DEBUG* Failed to damage balloon ~p, removing from DB~n", [TargetId]),
+            db:delete_bloon(TargetId)
     end.
