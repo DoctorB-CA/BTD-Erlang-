@@ -1,5 +1,5 @@
 -module(db).
--export([init/1]).
+-export([init/1, db_clear/0]).
 -export([write_bloon/1, delete_bloon/1, write_monkey/1, delete_monkey/1]).
 -export([write_dart/1, delete_dart/1, get_all_darts/0]).
 -export([get_bloons_in_regions/1, get_all_bloons/0]).
@@ -84,6 +84,23 @@ delete_monkey(MonkeyId) ->
     Oid = {monkey, MonkeyId},
     F = fun() -> mnesia:delete(Oid) end,
     mnesia:transaction(F).
+
+%% @doc Clears all tables (bloons, monkeys, darts) in the database.
+db_clear() ->
+    io:format("*DEBUG* DB: Clearing all tables (bloons, monkeys, darts)~n"),
+    F = fun() ->
+        mnesia:clear_table(bloon),
+        mnesia:clear_table(monkey),
+        mnesia:clear_table(dart)
+    end,
+    case mnesia:transaction(F) of
+        {atomic, ok} -> 
+            io:format("*DEBUG* DB: All tables cleared successfully~n"),
+            ok;
+        {aborted, Reason} ->
+            io:format("*ERROR* DB: Failed to clear tables: ~p~n", [Reason]),
+            {error, Reason}
+    end.
 
 
 %% ===================================================================

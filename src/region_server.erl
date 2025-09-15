@@ -88,6 +88,25 @@ handle_cast({balloon_reached_end, BloonId}, State = #region_state{id = RegionId}
             end
     end,
     io:format("-------------------region----------------------~n"),
+    {noreply, State};
+
+handle_cast({balloon_destroyed, BloonId, OriginalHealth}, State = #region_state{id = RegionId}) ->
+    io:format("*DEBUG* Region ~p: Balloon ~p destroyed! Original health: ~p~n", [RegionId, BloonId, OriginalHealth]),
+    
+    % Use global registration to find main_server
+    case global:whereis_name(main_server) of
+        undefined ->
+            io:format("*ERROR* main_server not found in global registry!~n");
+        MainServerPid ->
+            io:format("*DEBUG* Found main_server globally: ~p on node ~p~n", [MainServerPid, node(MainServerPid)]),
+            try
+                gen_server:cast(MainServerPid, {balloon_destroyed, BloonId, OriginalHealth}),
+                io:format("*DEBUG* main_server notified about balloon destruction~n")
+            catch
+                Error:Reason ->
+                    io:format("*ERROR* Failed to notify main_server about balloon destruction: ~p:~p~n", [Error, Reason])
+            end
+    end,
     {noreply, State}.
 
 % Helper functions

@@ -90,7 +90,7 @@ init([]) ->
     GroundMonkeyButton = wxBitmapButton:new(TopRowPanel, ?wxID_ANY, GroundMonkeyButtonBitmap), WaterMonkeyButton = wxBitmapButton:new(TopRowPanel, ?wxID_ANY, WaterMonkeyButtonBitmap),
     FireMonkeyButton = wxBitmapButton:new(TopRowPanel, ?wxID_ANY, FireMonkeyButtonBitmap), AirMonkeyButton = wxBitmapButton:new(TopRowPanel, ?wxID_ANY, AirMonkeyButtonBitmap),
     AvatarMonkeyButton = wxBitmapButton:new(TopRowPanel, ?wxID_ANY, AvatarMonkeyButtonBitmap), StartWaveButton = wxButton:new(TopRowPanel, ?wxID_ANY, [{label, "Start Wave"}]),
-    BananaIconWidget = wxStaticBitmap:new(TopRowPanel, ?wxID_ANY, BananaIcon), BananaTextWidget = wxStaticText:new(TopRowPanel, ?wxID_ANY, ": ---", [{style, ?wxALIGN_CENTER_VERTICAL}]),
+    BananaIconWidget = wxStaticBitmap:new(TopRowPanel, ?wxID_ANY, BananaIcon), BananaTextWidget = wxStaticText:new(TopRowPanel, ?wxID_ANY, ": 1000", [{style, ?wxALIGN_CENTER_VERTICAL}]),
     GroundMonkeyButtonId = wxWindow:getId(GroundMonkeyButton), WaterMonkeyButtonId = wxWindow:getId(WaterMonkeyButton), FireMonkeyButtonId = wxWindow:getId(FireMonkeyButton),
     AirMonkeyButtonId = wxWindow:getId(AirMonkeyButton), AvatarMonkeyButtonId = wxWindow:getId(AvatarMonkeyButton), StartWaveButtonId = wxWindow:getId(StartWaveButton),
 
@@ -218,6 +218,8 @@ handle_cast(lose_game,S=#state{frame=F})->
         ?wxID_YES ->
             % Clear board and refresh when restarting
             gui:clear_board(),
+            % Notify main server to restart the game (clears database)
+            main_server:restart_game(),
             io:format("*DEBUG* Player chose to restart the game~n");
         ?wxID_NO -> 
             io:format("*DEBUG* Player chose to quit the game~n"),

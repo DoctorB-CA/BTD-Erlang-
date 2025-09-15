@@ -90,18 +90,31 @@ handle_cast(game_over, State = #state{game_over = GameOver, bananas = CurrentBan
     end;
 
 handle_cast(restart_game, State) ->
+    % Clear all database tables when restarting
+    io:format("*DEBUG* Restarting game - clearing all database tables~n"),
+    db:db_clear(),
+    
     % Reset bananas when game restarts
     NewBananas = 1000,
     gui:change_bananas(NewBananas),
     io:format("*DEBUG* Game restarted, bananas reset to ~p~n", [NewBananas]),
     {noreply, State#state{game_over = false, bananas = NewBananas}};
 
-handle_cast({balloon_destroyed, _BloonId}, State = #state{bananas = CurrentBananas}) ->
-    % Award bananas for destroying balloons
-    BananaReward = 10,
+handle_cast({balloon_destroyed, BloonId, OriginalHealth}, State = #state{bananas = CurrentBananas}) ->
+    % Award bananas based on balloon's original health
+    % Basic reward formula: 5 + (Health * 2) bananas
+    BananaReward = 5 + (OriginalHealth * 2),
     NewBananas = CurrentBananas + BananaReward,
     gui:change_bananas(NewBananas),
-    io:format("*DEBUG* Balloon destroyed! +~p bananas (Total: ~p)~n", [BananaReward, NewBananas]),
+    io:format("*DEBUG* Balloon ~p destroyed! Health: ~p, +~p bananas (Total: ~p)~n", [BloonId, OriginalHealth, BananaReward, NewBananas]),
+    {noreply, State#state{bananas = NewBananas}};
+
+handle_cast({balloon_destroyed, BloonId}, State = #state{bananas = CurrentBananas}) ->
+    % Fallback for old format without health info - assume default health of 1
+    BananaReward = 5 + (1 * 2), % 7 bananas for default
+    NewBananas = CurrentBananas + BananaReward,
+    gui:change_bananas(NewBananas),
+    io:format("*DEBUG* Balloon ~p destroyed (legacy)! +~p bananas (Total: ~p)~n", [BloonId, BananaReward, NewBananas]),
     {noreply, State#state{bananas = NewBananas}};
 
 handle_cast({add_monkey, Type, Pos = {X, Y}, Range}, State = #state{region_pids = Pids, bananas = CurrentBananas}) ->

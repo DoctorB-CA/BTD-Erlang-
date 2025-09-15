@@ -63,7 +63,7 @@ terminate(_Reason, moving, #state{id = BloonId, current_region_pid = _RPid}) ->
 
 moving({call, From}, get_pos, Data) ->
     {keep_state, Data, {reply, From, {ok, Data#state.pos}}};
-moving(cast, {hit, Dmg}, Data=#state{id=BloonId, health=H, index=PI, region_id=RId, pos=Pos}) ->
+moving(cast, {hit, Dmg}, Data=#state{id=BloonId, health=H, index=PI, region_id=RId, pos=Pos, current_region_pid=RPid}) ->
     NewHealth = H - Dmg,
     io:format("*DEBUG* Balloon ~p hit for ~p damage! Health: ~p -> ~p~n", [BloonId, Dmg, H, NewHealth]),
     db:write_bloon(#bloon{id=BloonId, health=NewHealth, index=PI, pos=Pos, region_id=RId}),
@@ -71,11 +71,13 @@ moving(cast, {hit, Dmg}, Data=#state{id=BloonId, health=H, index=PI, region_id=R
         NewHealth =< 0 ->
             io:format("*DEBUG* Bloon ~p died at position: ~p~n", [BloonId, Pos]),
             db:delete_bloon(BloonId),
+            % Send banana reward to region when balloon is destroyed
+            gen_server:cast(RPid, {balloon_destroyed, BloonId, H}), % Send original health for reward calculation
             {stop, normal, Data#state{health=NewHealth}};
         true ->
             {keep_state, Data#state{health=NewHealth}}
     end;
-moving(info, {hit, Dmg}, Data=#state{id=BloonId, health=H, index=PI, region_id=RId, pos=Pos}) ->
+moving(info, {hit, Dmg}, Data=#state{id=BloonId, health=H, index=PI, region_id=RId, pos=Pos, current_region_pid=RPid}) ->
     % Keep old info handler for compatibility
     NewHealth = H - Dmg,
     db:write_bloon(#bloon{id=BloonId, health=NewHealth, index=PI, pos=Pos, region_id=RId}),
@@ -83,6 +85,8 @@ moving(info, {hit, Dmg}, Data=#state{id=BloonId, health=H, index=PI, region_id=R
         NewHealth =< 0 ->
             io:format("*DEBUG* Bloon died at position: ~p~n", [Pos]),
             db:delete_bloon(BloonId),
+            % Send banana reward to region when balloon is destroyed
+            gen_server:cast(RPid, {balloon_destroyed, BloonId, H}), % Send original health for reward calculation
             {stop, normal, Data#state{health=NewHealth}};
         true ->
             {keep_state, Data#state{health=NewHealth}}
@@ -186,11 +190,11 @@ left({X,Y}, N) ->
 
 %% Moves up by N pixels from Pos
 up({X,Y}, N) ->
-    lists:map(fun(D) -> {X, Y+D} end, lists:seq(1, N)).
+    lists:map(fun(D) -> {X, Y-D} end, lists:seq(1, N)).
 
 %% Moves down by N pixels from Pos
 down({X,Y}, N) ->
-    lists:map(fun(D) -> {X, Y-D} end, lists:seq(1, N)).
+    lists:map(fun(D) -> {X, Y+D} end, lists:seq(1, N)).
 
 %% Returns the location on the path for a given index
 get_location(Index) ->
