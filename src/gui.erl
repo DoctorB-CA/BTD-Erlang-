@@ -83,6 +83,8 @@ init([]) ->
     Board = wxPanel:new(MainPanel, [{style, ?wxFULL_REPAINT_ON_RESIZE}]),
     %% ✅ CHANGE: Set game board size to 800x800
     wxWindow:setClientSize(Board, {800, 800}),
+    %% ✅ CHANGE: Set background color to prevent white flashes
+    wxWindow:setBackgroundColour(Board, {0, 100, 0}), % Dark green background
 
     %% Create Widgets
     GroundMonkeyButton = wxBitmapButton:new(TopRowPanel, ?wxID_ANY, GroundMonkeyButtonBitmap), WaterMonkeyButton = wxBitmapButton:new(TopRowPanel, ?wxID_ANY, WaterMonkeyButtonBitmap),
@@ -111,7 +113,10 @@ init([]) ->
     wxFrame:setClientSize(Frame, {800, 900}),
 
     %% Connect Events
-    wxPanel:connect(Board, paint, []), wxPanel:connect(Board, left_down, []), wxFrame:connect(Frame, close_window),
+    wxPanel:connect(Board, paint, []), 
+    wxPanel:connect(Board, erase_background, []), % Prevent automatic background clearing
+    wxPanel:connect(Board, left_down, []), 
+    wxFrame:connect(Frame, close_window),
     wxWindow:connect(GroundMonkeyButton, command_button_clicked), wxWindow:connect(WaterMonkeyButton, command_button_clicked),
     wxWindow:connect(FireMonkeyButton, command_button_clicked), wxWindow:connect(AirMonkeyButton, command_button_clicked),
     wxWindow:connect(AvatarMonkeyButton, command_button_clicked), wxWindow:connect(StartWaveButton, command_button_clicked),
@@ -135,6 +140,7 @@ load_assets(ImagePath, TypeName, Size) ->
 
 handle_cast({add_monkey,T,X,Y,I},S)->
     NMaps=maps:put(I,{X,Y,T},S#state.monkeys),
+    % Refresh once when monkey is placed
     wxWindow:refresh(S#state.board),
     {noreply,S#state{monkeys=NMaps}};
 
@@ -247,6 +253,10 @@ handle_info(#wx{event=#wxPaint{}},S)->
 
     wxBufferedPaintDC:destroy(DC),
     {noreply,S};
+
+handle_info(#wx{event=#wxErase{}}, S) ->
+    % Do nothing - prevent automatic background clearing that causes white flashes
+    {noreply, S};
 
 handle_info(#wx{event=#wxMouse{type=left_down,x=_X,y=_Y}},S=#state{placing=none})->
     io:format("GUI: Please select a monkey type first.~n"),

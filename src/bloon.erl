@@ -115,14 +115,13 @@ handle_region_crossing(#state{id=BloonId, pos = {NewX, _} = CurrentPos, index = 
             io:format("*DEBUG* Balloon ~p trying to go to negative region ~p, keeping in region 0~n", [BloonId, NewRIdx]),
             {stay, OldRPid};
         NewRIdx >= length(AllPids) ->
-            io:format("*DEBUG* Balloon ~p trying to go to region ~p beyond max, keeping in current~n", [BloonId, NewRIdx]),
+            % Balloon is going beyond the last region - let it continue to the end
+            % Don't try to migrate, just stay in the current region until it reaches the end
             {stay, OldRPid};
         true ->
             NewRPid = lists:nth(NewRIdx + 1, AllPids),
             OldNode = node(OldRPid),
             NewNode = node(NewRPid),
-            io:format("*DEBUG* Balloon ~p at pos ~p: OldRegion=~p, NewRegion=~p, OldNode=~p, NewNode=~p~n", 
-                     [BloonId, CurrentPos, OldRegionId, NewRIdx, OldNode, NewNode]),
             if
                 OldNode /= NewNode ->
                     io:format("*DEBUG* --- Bloon ~p MIGRATING from node ~p to ~p ---~n", [BloonId, OldNode, NewNode]),
@@ -133,8 +132,7 @@ handle_region_crossing(#state{id=BloonId, pos = {NewX, _} = CurrentPos, index = 
                     timer:sleep(50),
                     {stop_and_migrate, NewRPid};
                 OldRPid /= NewRPid ->
-                    % Same node, different region - just update region
-                    io:format("*DEBUG* Balloon ~p switching regions on same node: ~p -> ~p~n", [BloonId, OldRegionId, NewRIdx]),
+                    % Same node, different region - just update region (no debug print)
                     NewRegionId = NewRIdx,
                     db:write_bloon(#bloon{id=BloonId, health=H, pos=CurrentPos, index=Idx, region_id=NewRegionId}),
                     {stay, NewRPid};  % Switch to new region PID
@@ -153,7 +151,7 @@ handle_region_crossing(#state{id=BloonId, pos = {NewX, _} = CurrentPos, index = 
 
 %%% ---------- paths -----------
 get_path() ->
-     %% Path: {0,200} -> {200,200} -> {200,400} -> {500,400} -> {500,200} -> {300,200} -> {300,600} -> {800,600}
+     %% Path: {0,200} -> {200,200} -> {200,400} -> {500,400} -> {500,200} -> {300,200} -> {300,600} -> {799,600}
     Start = {0,200},
     Path1 = right(Start, 180),                % {0,200} -> {180,200}
     Path2 = up(lists:last(Path1), 200),       % {180,200} -> {200,400}
@@ -161,7 +159,7 @@ get_path() ->
     Path4 = down(lists:last(Path3), 200),     % {500,400} -> {500,200}
     Path5 = left(lists:last(Path4), 200),     % {500,200} -> {300,200}
     Path6 = up(lists:last(Path5), 400),       % {300,200} -> {300,600}
-    Path7 = right(lists:last(Path6), 500),    % {300,600} -> {800,600}
+    Path7 = right(lists:last(Path6), 499),    % {300,600} -> {799,600}
     Path1 ++ Path2 ++ Path3 ++ Path4 ++ Path5 ++ Path6 ++ Path7.
 
 %% Moves right by N pixels from Pos

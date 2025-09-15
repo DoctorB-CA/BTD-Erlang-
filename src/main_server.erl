@@ -84,7 +84,14 @@ handle_info(update_gui_balloons, State) ->
     % This is the most efficient way for high-frequency updates
     AllBloons = db:get_all_bloons(),  % 1 database query for balloons
     AllDarts = db:get_all_darts(),    % 1 database query for darts
-    update_gui_with_objects(AllBloons, AllDarts),  % 1 message to GUI
+    % Only update GUI if there are actually objects to display
+    case {AllBloons, AllDarts} of
+        {[], []} ->
+            % No objects to display - don't trigger unnecessary refresh
+            ok;
+        _ ->
+            update_gui_with_objects(AllBloons, AllDarts)  % 1 message to GUI
+    end,
     {noreply, State};
 
 handle_info(_Info, State) ->
