@@ -89,10 +89,22 @@ handle_cast(game_over, State = #state{game_over = GameOver, bananas = CurrentBan
             {noreply, State}
     end;
 
-handle_cast(restart_game, State) ->
+handle_cast(restart_game, State = #state{region_pids = RegionPids}) ->
     % Clear all database tables when restarting
     io:format("*DEBUG* Restarting game - clearing all database tables~n"),
     db:db_clear(),
+    
+    % Notify all region servers to clean up their processes
+    io:format("*DEBUG* Notifying all regions to clean up processes~n"),
+    lists:foreach(fun(RegionPid) ->
+        case is_pid(RegionPid) of
+            true ->
+                gen_server:cast(RegionPid, restart_cleanup),
+                io:format("*DEBUG* Sent restart_cleanup to region ~p~n", [RegionPid]);
+            false ->
+                io:format("*ERROR* Invalid region PID: ~p~n", [RegionPid])
+        end
+    end, RegionPids),
     
     % Reset bananas when game restarts
     NewBananas = 1000,
