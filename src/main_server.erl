@@ -57,7 +57,7 @@ init([AllNodes]) ->
     {ok, #state{region_pids = RegionPids, bananas = InitialBananas}}.
 
 
-handle_cast({game_over, BloonId}, State = #state{game_over = GameOver, bananas = CurrentBananas}) ->
+handle_cast({game_over, BloonId}, State = #state{game_over = GameOver}) ->
     io:format("*DEBUG* main_server RECEIVED game_over message for balloon ~p~n", [BloonId]),
     case GameOver of
         false ->
@@ -78,7 +78,7 @@ handle_cast({game_over, BloonId}, State = #state{game_over = GameOver, bananas =
             {noreply, State}
     end;
 
-handle_cast(game_over, State = #state{game_over = GameOver, bananas = CurrentBananas}) ->
+handle_cast(game_over, State = #state{game_over = GameOver}) ->
     case GameOver of
         false ->
             io:format("*DEBUG* GAME OVER! First balloon reached the end~n"),
@@ -106,10 +106,43 @@ handle_cast(restart_game, State = #state{region_pids = RegionPids}) ->
         end
     end, RegionPids),
     
+    % Give regions time to clean up
+    timer:sleep(100),
+    
+    % Clear any lingering global registrations
+    io:format("*DEBUG* Clearing lingering global registrations~n"),
+    GlobalNames = global:registered_names(),
+    lists:foreach(fun(Name) ->
+        case global:whereis_name(Name) of
+            Pid when is_pid(Pid) ->
+                case is_process_alive(Pid) of
+                    false ->
+                        % Process is dead, unregister it
+                        global:unregister_name(Name),
+                        io:format("*DEBUG* Unregistered dead process: ~p~n", [Name]);
+                    true ->
+                        % Check if it's a balloon/monkey process and kill it
+                        try
+                            case process_info(Pid, initial_call) of
+                                {initial_call, {Module, _, _}} when Module =:= bloon; Module =:= monkey ->
+                                    io:format("*DEBUG* Killing and unregistering game process: ~p (~p)~n", [Name, Module]),
+                                    exit(Pid, kill),
+                                    global:unregister_name(Name);
+                                _ -> ok
+                            end
+                        catch
+                            _:_ -> ok
+                        end
+                end;
+            undefined -> ok
+        end
+    end, GlobalNames),
+    
     % Reset bananas when game restarts
     NewBananas = 1000,
     gui:change_bananas(NewBananas),
     io:format("*DEBUG* Game restarted, bananas reset to ~p~n", [NewBananas]),
+    io:format("*DEBUG* Game ready for new balloons and monkeys~n"),
     {noreply, State#state{game_over = false, bananas = NewBananas}};
 
 handle_cast({balloon_destroyed, BloonId, OriginalHealth}, State = #state{bananas = CurrentBananas}) ->
@@ -253,8 +286,28 @@ generate_level1() ->
         lists:foreach(fun(N) ->
             main_server:add_bloon(1),
             io:format("Spawned balloon ~p/5~n", [N]),
-            timer:sleep(200)  % 200ms between balloons
-        end, lists:seq(1, 5))
+            timer:sleep(700)  % 700ms between balloons
+        end, lists:seq(1, 20))
+    end).
+
+generate_level2() ->
+    %% Spawn balloons with proper timing to avoid GUI overload
+    spawn(fun() ->
+        lists:foreach(fun(N) ->
+            main_server:add_bloon(1),
+            io:format("Spawned balloon ~p/5~n", [N]),
+            timer:sleep(500)  % 500ms between balloons
+        end, lists:seq(1, 40))
+    end).
+
+generate_levelinf() ->
+    %% Spawn balloons with proper timing to avoid GUI overload
+    spawn(fun() ->
+        lists:foreach(fun(N) ->
+            main_server:add_bloon(1),
+            io:format("Spawned balloon ~p/5~n", [N]),
+            timer:sleep(500)  % 500ms between balloons
+        end, lists:seq(1, 1))
     end).
 
 %% --- Helper function to get monkey costs ---

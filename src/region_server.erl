@@ -110,100 +110,14 @@ handle_cast({balloon_destroyed, BloonId, OriginalHealth}, State = #region_state{
     {noreply, State};
 
 handle_cast(restart_cleanup, State = #region_state{id = RegionId}) ->
-    io:format("*DEBUG* Region ~p: Received restart_cleanup - terminating all processes~n", [RegionId]),
+    io:format("*DEBUG* Region ~p: Received restart_cleanup - database cleared, processes will terminate naturally~n", [RegionId]),
     
+    % Simple approach: processes will terminate naturally when they try to access
+    % deleted database records. This is safer than aggressively killing processes.
     try
-        % Kill all globally registered balloons
-        io:format("*DEBUG* Region ~p: Killing globally registered balloons~n", [RegionId]),
-        GlobalNames = global:registered_names(),
-        BalloonPids = lists:filtermap(fun(Name) ->
-            case global:whereis_name(Name) of
-                Pid when is_pid(Pid) ->
-                    % Check if this process is on our node and looks like a balloon
-                    case node(Pid) =:= node() of
-                        true -> {true, Pid};
-                        false -> false
-                    end;
-                undefined -> false
-            end
-        end, GlobalNames),
-        
-        lists:foreach(fun(Pid) ->
-            try
-                io:format("*DEBUG* Region ~p: Killing process ~p~n", [RegionId, Pid]),
-                exit(Pid, kill)
-            catch
-                _:_ -> ok % Ignore errors if process already dead
-            end
-        end, BalloonPids),
-        
-        % Kill all locally registered processes (monkeys, darts, etc.)
-        io:format("*DEBUG* Region ~p: Killing locally registered processes~n", [RegionId]),
-        LocalNames = registered(),
-        LocalPids = lists:filtermap(fun(Name) ->
-            case whereis(Name) of
-                Pid when is_pid(Pid) ->
-                    % Skip essential system processes
-                    case lists:member(Name, [init, error_logger, application_controller, 
-                                           kernel_sup, code_server, file_server_2, 
-                                           standard_error, user, region_server, 
-                                           worker_supervisor, gui]) of
-                        false -> {true, Pid};
-                        true -> false
-                    end;
-                undefined -> false
-            end
-        end, LocalNames),
-        
-        lists:foreach(fun(Pid) ->
-            try
-                io:format("*DEBUG* Region ~p: Killing local process ~p~n", [RegionId, Pid]),
-                exit(Pid, kill)
-            catch
-                _:_ -> ok % Ignore errors if process already dead
-            end
-        end, LocalPids),
-        
-        % Additional aggressive cleanup: find all processes running bloon or monkey modules
-        io:format("*DEBUG* Region ~p: Performing aggressive cleanup of bloon/monkey processes~n", [RegionId]),
-        AllPids = erlang:processes(),
-        GamePids = lists:filter(fun(Pid) ->
-            try
-                case node(Pid) =:= node() of
-                    true ->
-                        case process_info(Pid, dictionary) of
-                            {dictionary, Dict} -> 
-                                % Check if process dictionary contains game-related info
-                                lists:any(fun({Key, _Val}) ->
-                                    case Key of
-                                        '$initial_call' -> true;
-                                        _ -> false
-                                    end
-                                end, Dict);
-                            undefined -> false
-                        end;
-                    false -> false
-                end
-            catch
-                _:_ -> false
-            end
-        end, AllPids),
-        
-        lists:foreach(fun(Pid) ->
-            try
-                case process_info(Pid, initial_call) of
-                    {initial_call, {Module, _, _}} when Module =:= bloon; Module =:= monkey ->
-                        io:format("*DEBUG* Region ~p: Killing game process ~p (module: ~p)~n", [RegionId, Pid, Module]),
-                        exit(Pid, kill);
-                    _ -> ok
-                end
-            catch
-                _:_ -> ok
-            end
-        end, GamePids),
-        
-        io:format("*DEBUG* Region ~p: Cleanup completed - killed ~p global and ~p local processes~n", 
-                 [RegionId, length(BalloonPids), length(LocalPids)])
+        % Just log that cleanup was requested - the database clearing in main_server
+        % should be sufficient to cause game processes to terminate gracefully
+        io:format("*DEBUG* Region ~p: Cleanup completed - processes will fail naturally on DB access~n", [RegionId])
     catch
         Error:Reason ->
             io:format("*ERROR* Region ~p: Error during cleanup: ~p:~p~n", [RegionId, Error, Reason])
