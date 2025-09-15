@@ -12,7 +12,16 @@
 % The state will now hold the actual PIDs of the remote regions.
 -record(state, { region_pids = [], game_over = false }).
 
-start_link(AllNodes) -> gen_server:start_link({local, ?MODULE}, ?MODULE, [AllNodes], []).
+start_link(AllNodes) -> 
+    case gen_server:start_link({local, ?MODULE}, ?MODULE, [AllNodes], []) of
+        {ok, Pid} ->
+            % Register globally so any node can find main_server
+            io:format("*DEBUG* Registering main_server globally~n"),
+            global:register_name(main_server, Pid),
+            {ok, Pid};
+        Error ->
+            Error
+    end.
 add_monkey(Type, Pos, Range) -> gen_server:cast(?MODULE, {add_monkey, Type, Pos, Range}).
 add_bloon(Health) -> gen_server:cast(?MODULE, {add_bloon,Health}).
 game_over() -> gen_server:cast(?MODULE, game_over).
