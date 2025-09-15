@@ -92,14 +92,14 @@ moving(state_timeout, move, Data=#state{id=BloonId, health=H, index=PI, region_i
     NewPos = get_location(NextIdx),
     if
         NewPos =:= undefined ->
-            % Balloon reached the end - player loses!
-            io:format("*DEBUG* Balloon ~p reached END! Calling main_server:game_over()~n", [BloonId]),
+            % Balloon reached the end - notify current region about game over!
+            io:format("*DEBUG* Balloon ~p reached END! Notifying region ~p~n", [BloonId, Data#state.current_region_pid]),
             try
-                main_server:game_over(),
-                io:format("*DEBUG* main_server:game_over() called successfully~n")
+                gen_server:cast(Data#state.current_region_pid, {balloon_reached_end, BloonId}),
+                io:format("*DEBUG* Region notified about balloon ~p reaching end~n", [BloonId])
             catch
                 Error:Reason ->
-                    io:format("*ERROR* main_server:game_over() failed: ~p:~p~n", [Error, Reason])
+                    io:format("*ERROR* Failed to notify region: ~p:~p~n", [Error, Reason])
             end,
             {stop, normal, Data};
         true ->

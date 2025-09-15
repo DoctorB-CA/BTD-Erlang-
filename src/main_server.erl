@@ -37,6 +37,17 @@ init([AllNodes]) ->
     {ok, #state{region_pids = RegionPids}}.
 
 
+handle_cast({game_over, BloonId}, State = #state{game_over = GameOver}) ->
+    case GameOver of
+        false ->
+            io:format("*DEBUG* GAME OVER! Balloon ~p reached the end~n", [BloonId]),
+            gui:lose_game(),
+            {noreply, State#state{game_over = true}};
+        true ->
+            io:format("*DEBUG* Game already over, ignoring additional balloon ~p end~n", [BloonId]),
+            {noreply, State}
+    end;
+
 handle_cast(game_over, State = #state{game_over = GameOver}) ->
     case GameOver of
         false ->

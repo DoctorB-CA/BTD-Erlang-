@@ -66,6 +66,17 @@ handle_cast({spawn_bloon_migration, Health, Index, Pos, AllRegionPids, _RegionId
                     timer:apply_after(100, gen_server, cast, [self(), {spawn_bloon_migration, Health, Index, Pos, AllRegionPids, _RegionId, OriginalBloonId}])
             end
     end,
+    {noreply, State};
+
+handle_cast({balloon_reached_end, BloonId}, State = #region_state{id = RegionId}) ->
+    io:format("*DEBUG* Region ~p: Balloon ~p reached end! Notifying main_server~n", [RegionId, BloonId]),
+    try
+        gen_server:cast(main_server, {game_over, BloonId}),
+        io:format("*DEBUG* main_server notified about game over~n")
+    catch
+        Error:Reason ->
+            io:format("*ERROR* Failed to notify main_server: ~p:~p~n", [Error, Reason])
+    end,
     {noreply, State}.
 
 % Helper functions

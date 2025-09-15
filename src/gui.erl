@@ -46,9 +46,7 @@ delete_dart(I) -> gen_server:cast(gui, {delete_dart,I}).
 move_dart(I,P) -> gen_server:cast(gui, {move_dart,I,P}).
 refresh() -> gen_server:cast(gui, refresh).
 change_bananas(Amount) -> gen_server:cast(gui, {change_bananas, Amount}).
-lose_game() -> 
-    io:format("*DEBUG* GUI:lose_game() called from ~p~n", [self()]),
-    gen_server:cast(gui, lose_game).
+lose_game() -> gen_server:cast(gui, lose_game).
 clear_board() -> gen_server:cast(gui, clear_board).
 update_balloons(BalloonMap) -> gen_server:cast(gui, {update_balloons, BalloonMap}).
 update_darts(DartMap) -> gen_server:cast(gui, {update_darts, DartMap}).
@@ -199,19 +197,28 @@ handle_cast({change_bananas,A},S=#state{banana_text_widget=W})->
 
 handle_cast(lose_game,S=#state{frame=F})->
     % Clear the board when game is lost
-    io:format("*DEBUG* Game over - clearing GUI~n"),
+    io:format("*DEBUG* Game over - clearing GUI and showing dialog~n"),
     NewS = S#state{balloons=#{}, darts=#{}},
     wxWindow:refresh(S#state.board),
     
-    Dialog=wxMessageDialog:new(F,"You lose! Play again?",[{caption,"Game Over"},{style,?wxYES_NO}]),
+    % Create a more prominent game over dialog
+    Dialog=wxMessageDialog:new(F,"Game Over!\n\nA balloon reached the end!\n\nWould you like to restart the game?",[
+        {caption,"You Lost!"},
+        {style,?wxYES_NO bor ?wxICON_EXCLAMATION}
+    ]),
     Result=wxMessageDialog:showModal(Dialog),
     wxMessageDialog:destroy(Dialog),
-    if Result==?wxID_YES->
-        % Clear board and refresh when restarting
-        gui:clear_board(),
-        io:format("*DEBUG* Player chose to restart~n");
-    Result==?wxID_NO-> 
-        wxFrame:close(F)
+    
+    case Result of
+        ?wxID_YES ->
+            % Clear board and refresh when restarting
+            gui:clear_board(),
+            io:format("*DEBUG* Player chose to restart the game~n");
+        ?wxID_NO -> 
+            io:format("*DEBUG* Player chose to quit the game~n"),
+            wxFrame:close(F);
+        _ ->
+            io:format("*DEBUG* Unexpected dialog result: ~p~n", [Result])
     end,
     {noreply,NewS};
 
