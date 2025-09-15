@@ -1,16 +1,22 @@
 -module(main_server).
 -behaviour(gen_server).
 -include("dbr.hrl").  % Include database records
--export([start_link/1, add_monkey/3, add_bloon/1, generate_level1/0, game_over/0]).
+-export([start_link/1, add_monkey/3, add_bloon/1, generate_level1/0, game_over/0, restart_game/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -define(NUM_REGIONS, 4).
 -define(REGION_WIDTH, 200).
 -define(balloon_cooldown, 1000).
 
+% Monkey costs in bananas
+-define(GROUND_MONKEY_COST, 100).
+-define(WATER_MONKEY_COST, 150).
+-define(FIRE_MONKEY_COST, 200).
+-define(AIR_MONKEY_COST, 250).
+-define(AVATAR_MONKEY_COST, 500).
 
 % The state will now hold the actual PIDs of the remote regions.
--record(state, { region_pids = [], game_over = false }).
+-record(state, { region_pids = [], game_over = false, bananas = 1000 }).
 
 start_link(AllNodes) -> 
     case gen_server:start_link({local, ?MODULE}, ?MODULE, [AllNodes], []) of
@@ -25,9 +31,14 @@ start_link(AllNodes) ->
 add_monkey(Type, Pos, Range) -> gen_server:cast(?MODULE, {add_monkey, Type, Pos, Range}).
 add_bloon(Health) -> gen_server:cast(?MODULE, {add_bloon,Health}).
 game_over() -> gen_server:cast(?MODULE, game_over).
+restart_game() -> gen_server:cast(?MODULE, restart_game).
 
 init([AllNodes]) ->
     io:format("Main Server started. Waiting for all regions to report in...~n"),
+    
+    % Initialize bananas and update GUI
+    InitialBananas = 1000,
+    gui:change_bananas(InitialBananas),
     
     RegionNameNodes = lists:zipwith(
         fun(Id, Node) -> {list_to_atom("region_" ++ integer_to_list(Id)), Node} end,
@@ -43,10 +54,10 @@ init([AllNodes]) ->
     % Start timer for GUI updates - 30 FPS for smooth visuals without overload
     timer:send_interval(33, self(), update_gui_balloons),
     
-    {ok, #state{region_pids = RegionPids}}.
+    {ok, #state{region_pids = RegionPids, bananas = InitialBananas}}.
 
 
-handle_cast({game_over, BloonId}, State = #state{game_over = GameOver}) ->
+handle_cast({game_over, BloonId}, State = #state{game_over = GameOver, bananas = CurrentBananas}) ->
     io:format("*DEBUG* main_server RECEIVED game_over message for balloon ~p~n", [BloonId]),
     case GameOver of
         false ->
@@ -67,7 +78,7 @@ handle_cast({game_over, BloonId}, State = #state{game_over = GameOver}) ->
             {noreply, State}
     end;
 
-handle_cast(game_over, State = #state{game_over = GameOver}) ->
+handle_cast(game_over, State = #state{game_over = GameOver, bananas = CurrentBananas}) ->
     case GameOver of
         false ->
             io:format("*DEBUG* GAME OVER! First balloon reached the end~n"),
@@ -78,37 +89,87 @@ handle_cast(game_over, State = #state{game_over = GameOver}) ->
             {noreply, State}
     end;
 
-handle_cast({add_monkey, Type, Pos = {X, Y}, Range}, State = #state{region_pids = Pids}) ->
-    RegionIndex = trunc(X / ?REGION_WIDTH),
-    RegionPid = lists:nth(RegionIndex + 1, Pids),
-    io:format("~p: Routing 'add_monkey' to region PID ~p~n", [node(), RegionPid]),
-    case is_pid(RegionPid) of
-        true -> 
-            gen_server:cast(RegionPid, {spawn_monkey, Type, Pos, Range}),
-            gui:add_monkey(Type,X,Y,erlang:make_ref());
-        false -> io:format("~p: ERROR - Invalid PID for region ~p~n", [node(), RegionIndex])
-    end,
-    {noreply, State};
+handle_cast(restart_game, State) ->
+    % Reset bananas when game restarts
+    NewBananas = 1000,
+    gui:change_bananas(NewBananas),
+    io:format("*DEBUG* Game restarted, bananas reset to ~p~n", [NewBananas]),
+    {noreply, State#state{game_over = false, bananas = NewBananas}};
+
+handle_cast({balloon_destroyed, _BloonId}, State = #state{bananas = CurrentBananas}) ->
+    % Award bananas for destroying balloons
+    BananaReward = 10,
+    NewBananas = CurrentBananas + BananaReward,
+    gui:change_bananas(NewBananas),
+    io:format("*DEBUG* Balloon destroyed! +~p bananas (Total: ~p)~n", [BananaReward, NewBananas]),
+    {noreply, State#state{bananas = NewBananas}};
+
+handle_cast({add_monkey, Type, Pos = {X, Y}, Range}, State = #state{region_pids = Pids, bananas = CurrentBananas}) ->
+    % Check if we have enough bananas for this monkey type
+    Cost = get_monkey_cost(Type),
+    case CurrentBananas >= Cost of
+        true ->
+            io:format("*DEBUG* Adding ~p (Cost: ~p, Remaining: ~p)~n", 
+                     [Type, Cost, CurrentBananas - Cost]),
+            
+            RegionIndex = trunc(X / ?REGION_WIDTH),
+            RegionPid = lists:nth(RegionIndex + 1, Pids),
+            io:format("~p: Routing 'add_monkey' to region PID ~p~n", [node(), RegionPid]),
+            case is_pid(RegionPid) of
+                true -> 
+                    gen_server:cast(RegionPid, {spawn_monkey, Type, Pos, Range}),
+                    gui:add_monkey(Type,X,Y,erlang:make_ref());
+                false -> 
+                    io:format("~p: ERROR - Invalid PID for region ~p~n", [node(), RegionIndex])
+            end,
+            
+            % Deduct bananas and update GUI
+            NewBananas = CurrentBananas - Cost,
+            gui:change_bananas(NewBananas),
+            {noreply, State#state{bananas = NewBananas}};
+        false ->
+            io:format("*ERROR* Not enough bananas! Need ~p, have ~p for ~p monkey~n", 
+                     [Cost, CurrentBananas, Type]),
+            {noreply, State}
+    end;
 
 
-handle_cast({place_item,{MT,X,Y}}, State = #state{region_pids = Pids}) ->
-    % Generate a unique ID for the monkey
-    I = erlang:make_ref(),
-    
-    % Add monkey to the GUI first
-    gui:add_monkey(MT,X,Y,I),
-    
-    % Route to the appropriate region to create the monkey FSM
-    RegionIndex = trunc(X / ?REGION_WIDTH),
-    RegionPid = lists:nth(RegionIndex + 1, Pids),
-    io:format("~p: Routing 'place_item' to region PID ~p~n", [node(), RegionPid]),
-    case is_pid(RegionPid) of
-        true -> 
-            gen_server:cast(RegionPid, {spawn_monkey, MT, {X,Y}, 200});
-        false -> 
-            io:format("~p: ERROR - Invalid PID for region ~p~n", [node(), RegionIndex])
-    end,
-    {noreply, State};
+handle_cast({place_item,{MT,X,Y}}, State = #state{region_pids = Pids, bananas = CurrentBananas}) ->
+    % Check if we have enough bananas for this monkey type
+    Cost = get_monkey_cost(MT),
+    case CurrentBananas >= Cost of
+        true ->
+            % We have enough bananas - proceed with placing monkey
+            io:format("*DEBUG* Placing ~p (Cost: ~p, Current: ~p, Remaining: ~p)~n", 
+                     [MT, Cost, CurrentBananas, CurrentBananas - Cost]),
+            
+            % Generate a unique ID for the monkey
+            I = erlang:make_ref(),
+            
+            % Add monkey to the GUI first
+            gui:add_monkey(MT,X,Y,I),
+            
+            % Route to the appropriate region to create the monkey FSM
+            RegionIndex = trunc(X / ?REGION_WIDTH),
+            RegionPid = lists:nth(RegionIndex + 1, Pids),
+            io:format("~p: Routing 'place_item' to region PID ~p~n", [node(), RegionPid]),
+            case is_pid(RegionPid) of
+                true -> 
+                    gen_server:cast(RegionPid, {spawn_monkey, MT, {X,Y}, 200});
+                false -> 
+                    io:format("~p: ERROR - Invalid PID for region ~p~n", [node(), RegionIndex])
+            end,
+            
+            % Deduct bananas and update GUI
+            NewBananas = CurrentBananas - Cost,
+            gui:change_bananas(NewBananas),
+            {noreply, State#state{bananas = NewBananas}};
+        false ->
+            % Not enough bananas - reject the placement
+            io:format("Not enough bananas! Need ~p, have ~p for ~p monkey~n", 
+                     [Cost, CurrentBananas, MT]),
+            {noreply, State}
+    end;
 
 
 handle_cast({add_bloon, Health}, State = #state{region_pids = Pids}) ->
@@ -170,4 +231,12 @@ generate_level1() ->
             timer:sleep(200)  % 200ms between balloons
         end, lists:seq(1, 5))
     end).
+
+%% --- Helper function to get monkey costs ---
+get_monkey_cost(ground_monkey) -> ?GROUND_MONKEY_COST;
+get_monkey_cost(water_monkey) -> ?WATER_MONKEY_COST;
+get_monkey_cost(fire_monkey) -> ?FIRE_MONKEY_COST;
+get_monkey_cost(air_monkey) -> ?AIR_MONKEY_COST;
+get_monkey_cost(avatar_monkey) -> ?AVATAR_MONKEY_COST;
+get_monkey_cost(_) -> 0.  % Unknown monkey type costs nothing
 
