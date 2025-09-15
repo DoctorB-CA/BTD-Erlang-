@@ -210,11 +210,16 @@ handle_cast(clear_board,S)->
 
 handle_cast({update_balloons, BalloonMap}, S) ->
     % Update balloons and trigger ONE refresh per update cycle
+    % Always refresh to ensure dead objects are cleared
     wxWindow:refresh(S#state.board),
     {noreply, S#state{balloons=BalloonMap}};
 
 handle_cast({update_darts, DartMap}, S) ->
-    % Just update darts - refresh already triggered by balloons
+    % Update darts and ensure another refresh if balloons are empty
+    case maps:size(S#state.balloons) of
+        0 -> wxWindow:refresh(S#state.board); % Force refresh if no balloons
+        _ -> ok
+    end,
     {noreply, S#state{darts=DartMap}};
 
 handle_cast(_,S)->{noreply,S}.
