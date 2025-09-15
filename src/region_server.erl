@@ -71,10 +71,17 @@ handle_cast({spawn_bloon_migration, Health, Index, Pos, AllRegionPids, _RegionId
 handle_cast({balloon_reached_end, BloonId}, State = #region_state{id = RegionId}) ->
     io:format("-------------------region----------------------~n"),
     io:format("*DEBUG* Region ~p: Balloon ~p reached end! Notifying main_server~n", [RegionId, BloonId]),
+    io:format("*DEBUG* Checking if main_server process exists...~n"),
+    case whereis(main_server) of
+        undefined ->
+            io:format("*ERROR* main_server process not found!~n");
+        Pid ->
+            io:format("*DEBUG* main_server process found: ~p~n", [Pid])
+    end,
     io:format("-------------------region----------------------~n"),
     try
         gen_server:cast(main_server, {game_over, BloonId}),
-        io:format("*DEBUG* main_server notified about game over~n")
+        io:format("*DEBUG* gen_server:cast to main_server completed~n")
     catch
         Error:Reason ->
             io:format("*ERROR* Failed to notify main_server: ~p:~p~n", [Error, Reason])

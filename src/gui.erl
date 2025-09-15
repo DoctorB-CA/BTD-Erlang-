@@ -234,11 +234,6 @@ handle_cast(clear_board,S)->
 
 handle_cast({update_balloons, BalloonMap}, S) ->
     % Update balloons and trigger ONE refresh per update cycle
-    % Log when we receive empty maps for debugging
-    case maps:size(BalloonMap) of
-        0 -> io:format("*DEBUG* GUI received empty balloon map - clearing display~n");
-        N -> io:format("*DEBUG* GUI received ~p balloons~n", [N])
-    end,
     wxWindow:refresh(S#state.board),
     {noreply, S#state{balloons=BalloonMap}};
 
@@ -246,10 +241,9 @@ handle_cast({update_darts, DartMap}, S) ->
     % Update darts and force refresh if needed
     case maps:size(DartMap) of
         0 -> 
-            io:format("*DEBUG* GUI received empty dart map - clearing display~n"),
             wxWindow:refresh(S#state.board); % Force refresh for empty darts
-        N -> 
-            io:format("*DEBUG* GUI received ~p darts~n", [N])
+        _ -> 
+            ok
     end,
     {noreply, S#state{darts=DartMap}};
 

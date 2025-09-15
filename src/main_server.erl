@@ -38,6 +38,7 @@ init([AllNodes]) ->
 
 
 handle_cast({game_over, BloonId}, State = #state{game_over = GameOver}) ->
+    io:format("*DEBUG* main_server RECEIVED game_over message for balloon ~p~n", [BloonId]),
     case GameOver of
         false ->
             io:format("-------------------main----------------------~n"),
@@ -133,11 +134,6 @@ update_gui_with_objects(AllBloons, AllDarts) ->
     DartMap = maps:from_list([
         {Id, {Type, Pos}} || #dart{id=Id, type=Type, pos=Pos} <- AllDarts
     ]),
-    % DEBUG: Log when we send empty maps
-    case {maps:size(BalloonMap), maps:size(DartMap)} of
-        {0, 0} -> io:format("*DEBUG* Sending empty balloon and dart maps to GUI~n");
-        {B, D} -> io:format("*DEBUG* Sending ~p balloons, ~p darts to GUI~n", [B, D])
-    end,
     % SIMPLE: Send everything to GUI in separate messages
     gui:update_balloons(BalloonMap),
     gui:update_darts(DartMap).

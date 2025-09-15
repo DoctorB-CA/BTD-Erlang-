@@ -165,15 +165,16 @@ handle_region_crossing(#state{id=BloonId, pos = {NewX, _} = CurrentPos, index = 
 %%% ---------- paths -----------
 get_path() ->
      %% Path: {0,200} -> {200,200} -> {200,400} -> {500,400} -> {500,200} -> {300,200} -> {300,600} -> {799,600}
-    Start = {0,200},
-    Path1 = right(Start, 180),                % {0,200} -> {180,200}
+    Start = {0,300},
+    Path1 = right(Start, 600),                % {0,200} -> {180,200}
     Path2 = up(lists:last(Path1), 200),       % {180,200} -> {200,400}
-    Path3 = right(lists:last(Path2), 300),    % {200,400} -> {500,400}
-    Path4 = down(lists:last(Path3), 200),     % {500,400} -> {500,200}
-    Path5 = left(lists:last(Path4), 200),     % {500,200} -> {300,200}
-    Path6 = up(lists:last(Path5), 400),       % {300,200} -> {300,600}
-    Path7 = right(lists:last(Path6), 499),    % {300,600} -> {799,600}
-    Path1 ++ Path2 ++ Path3 ++ Path4 ++ Path5 ++ Path6 ++ Path7.
+    Path3 = right(lists:last(Path2), 799),    % {200,400} -> {500,400}
+    
+    %Path4 = down(lists:last(Path3), 200),     % {500,400} -> {500,200}
+    %Path5 = left(lists:last(Path4), 200),     % {500,200} -> {300,200}
+    %Path6 = up(lists:last(Path5), 400),       % {300,200} -> {300,600}
+    %Path7 = right(lists:last(Path6), 499),    % {300,600} -> {799,600}
+    Path1 ++ Path2 ++ Path3. % ++ Path4 ++ Path5 ++ Path6 ++ Path7.
 
 %% Moves right by N pixels from Pos
 right({X,Y}, N) ->
