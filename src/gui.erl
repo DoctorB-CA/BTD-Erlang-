@@ -197,16 +197,21 @@ handle_cast({change_bananas,A},S=#state{banana_text_widget=W})->
 
 handle_cast(lose_game,S=#state{frame=F})->
     % Clear the board when game is lost
-    io:format("*DEBUG* Game over - clearing GUI and showing dialog~n"),
+    io:format("-------------------gui----------------------~n"),
+    io:format("*DEBUG* GUI: lose_game message received! Clearing GUI and showing dialog~n"),
+    io:format("-------------------gui----------------------~n"),
     NewS = S#state{balloons=#{}, darts=#{}},
     wxWindow:refresh(S#state.board),
     
     % Create a more prominent game over dialog
+    io:format("*DEBUG* GUI: Creating game over dialog...~n"),
     Dialog=wxMessageDialog:new(F,"Game Over!\n\nA balloon reached the end!\n\nWould you like to restart the game?",[
         {caption,"You Lost!"},
         {style,?wxYES_NO bor ?wxICON_EXCLAMATION}
     ]),
+    io:format("*DEBUG* GUI: Showing modal dialog...~n"),
     Result=wxMessageDialog:showModal(Dialog),
+    io:format("*DEBUG* GUI: Dialog result: ~p~n", [Result]),
     wxMessageDialog:destroy(Dialog),
     
     case Result of

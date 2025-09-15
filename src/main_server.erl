@@ -40,8 +40,17 @@ init([AllNodes]) ->
 handle_cast({game_over, BloonId}, State = #state{game_over = GameOver}) ->
     case GameOver of
         false ->
+            io:format("-------------------main----------------------~n"),
             io:format("*DEBUG* GAME OVER! Balloon ~p reached the end~n", [BloonId]),
-            gui:lose_game(),
+            io:format("*DEBUG* Calling gui:lose_game()...~n"),
+            io:format("-------------------main----------------------~n"),
+            try
+                gui:lose_game(),
+                io:format("*DEBUG* gui:lose_game() called successfully~n")
+            catch
+                Error:Reason ->
+                    io:format("*ERROR* gui:lose_game() failed: ~p:~p~n", [Error, Reason])
+            end,
             {noreply, State#state{game_over = true}};
         true ->
             io:format("*DEBUG* Game already over, ignoring additional balloon ~p end~n", [BloonId]),

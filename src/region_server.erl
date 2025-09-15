@@ -69,7 +69,9 @@ handle_cast({spawn_bloon_migration, Health, Index, Pos, AllRegionPids, _RegionId
     {noreply, State};
 
 handle_cast({balloon_reached_end, BloonId}, State = #region_state{id = RegionId}) ->
+    io:format("-------------------region----------------------~n"),
     io:format("*DEBUG* Region ~p: Balloon ~p reached end! Notifying main_server~n", [RegionId, BloonId]),
+    io:format("-------------------region----------------------~n"),
     try
         gen_server:cast(main_server, {game_over, BloonId}),
         io:format("*DEBUG* main_server notified about game over~n")

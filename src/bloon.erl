@@ -93,7 +93,9 @@ moving(state_timeout, move, Data=#state{id=BloonId, health=H, index=PI, region_i
     if
         NewPos =:= undefined ->
             % Balloon reached the end - notify current region about game over!
+            io:format("-------------------balloon----------------------~n"),
             io:format("*DEBUG* Balloon ~p reached END! Notifying region ~p~n", [BloonId, Data#state.current_region_pid]),
+            io:format("-------------------balloon----------------------~n"),
             try
                 gen_server:cast(Data#state.current_region_pid, {balloon_reached_end, BloonId}),
                 io:format("*DEBUG* Region notified about balloon ~p reaching end~n", [BloonId])
