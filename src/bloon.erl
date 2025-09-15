@@ -46,6 +46,11 @@ terminate(normal, moving, #state{id = BloonId, current_region_pid = _RPid}) ->
     % This is a normal migration - DON'T delete from DB
     io:format("*DEBUG* Balloon ~p process terminating due to migration (normal)~n", [BloonId]),
     ok;
+terminate(reached_end, moving, #state{id = BloonId, current_region_pid = _RPid}) ->
+    % Balloon reached the end of the path - DELETE from DB
+    io:format("*DEBUG* Balloon ~p reached end of path, deleting from DB~n", [BloonId]),
+    db:delete_bloon(BloonId),
+    ok;
 terminate(_Reason, moving, #state{id = BloonId, current_region_pid = _RPid}) ->
     % This is a real death (health ≤ 0 or error) - DELETE from DB
     io:format("*DEBUG* Balloon ~p dying due to ~p, deleting from DB~n", [BloonId, _Reason]),
@@ -83,7 +88,9 @@ moving(state_timeout, move, Data=#state{id=BloonId, health=H, index=PI, region_i
     NewPos = get_location(NextIdx),
     if
         NewPos =:= undefined ->
-            {stop, normal, Data};
+            % Balloon reached the end - player loses!
+            gui:lose_game(),
+            {stop, reached_end, Data};
         true ->
             db:write_bloon(#bloon{id=BloonId, health=H, index=NextIdx, pos=NewPos, region_id=RId}),
             NewData = Data#state{index=NextIdx, pos=NewPos},

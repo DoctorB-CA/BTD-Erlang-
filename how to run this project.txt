@@ -55,5 +55,5 @@ main_server:add_monkey(ground_monkey, {40, 150}, 80).
 %% Step 8: Test the System by adding balloons
 %% Balloons will generate their own path internally and move every 100ms
 %% GUI will update at 20 FPS (50ms) to show smooth movement
-main_server:add_bloon(5).
+main_server:add_bloon(1).
 

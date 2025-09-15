@@ -62,7 +62,7 @@ handle_cast({place_item,{MT,X,Y}}, State = #state{region_pids = Pids}) ->
     io:format("~p: Routing 'place_item' to region PID ~p~n", [node(), RegionPid]),
     case is_pid(RegionPid) of
         true -> 
-            gen_server:cast(RegionPid, {spawn_monkey, MT, {X,Y}, 80});
+            gen_server:cast(RegionPid, {spawn_monkey, MT, {X,Y}, 200});
         false -> 
             io:format("~p: ERROR - Invalid PID for region ~p~n", [node(), RegionIndex])
     end,
