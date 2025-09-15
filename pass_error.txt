@@ -1,69 +1,161 @@
-(worker1@132.72.81.167)1> Starting 'proj' application...
-Node ''worker1@132.72.81.167'' is a worker node. Trying to connect to main node...
-Successfully connected to main node. Starting Mnesia...
-Mnesia started. Waiting for local tables to be ready...
-=CRASH REPORT==== 10-Sep-2025::13:08:27.446326 ===
+*DEBUG* Balloon #Ref<13201.2418531854.2242904065.31643> reached end of path, deleting from DB
+=ERROR REPORT==== 15-Sep-2025::07:17:17.323894 ===
+** State machine #Ref<13201.2418531854.2242904065.31643> terminating
+** Last event = {state_timeout,move}
+** When server state  = {moving,
+                            {state,#Ref<13201.2418531854.2242904065.31643>,
+                                1979,1,
+                                {779,600},
+                                <0.205.0>,
+                                [<13201.202.0>,<13200.203.0>,<13202.204.0>,
+                                 <0.205.0>],
+                                3}}
+** Reason for termination = exit:reached_end
+** Callback modules = [bloon]
+** Callback mode = state_functions
+** Stacktrace = 
+**  [{gen_statem,loop_state_callback_result,11,
+                 [{file,"gen_statem.erl"},{line,1397}]},
+     {proc_lib,init_p_do_apply,3,[{file,"proc_lib.erl"},{line,226}]}]
+
+=CRASH REPORT==== 15-Sep-2025::07:17:17.324209 ===
   crasher:
-    initial call: application_master:init/4
-    pid: <0.255.0>
+    initial call: bloon:init/1
+    pid: <0.210.0>
     registered_name: []
-    exception exit: {bad_return,
-                     {{proj_app,start,[normal,[]]},
-                      {'EXIT',
-                       {undef,
-                        [{db,wait_for_local_tables,[],[]},
-                         {proj_app,start,2,
-                          [{file,
-                            "/home/csestudent/Desktop/bar/Proj/src/proj_app.erl"},
-                           {line,27}]},
-                         {application_master,start_it_old,4,
-                          [{file,"application_master.erl"},{line,293}]}]}}}}
-      in function  application_master:init/4 (application_master.erl, line 142)
-    ancestors: [<0.254.0>]
-    message_queue_len: 1
-    messages: [{'EXIT',<0.256.0>,normal}]
-    links: [<0.254.0>,<0.44.0>]
-    dictionary: []
-    trap_exit: true
+    exception exit: reached_end
+      in function  gen_statem:loop_state_callback_result/11 (gen_statem.erl, line 1397)
+    ancestors: [region_3,worker_supervisor,<0.203.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.205.0>]
+    dictionary: [{rand_seed,{#{bits => 58,jump => #Fun<rand.3.92093067>,
+                                next => #Fun<rand.0.92093067>,type => exsss,
+                                uniform => #Fun<rand.1.92093067>,
+                                uniform_n => #Fun<rand.2.92093067>},
+                              [35245202414016306|221069188547437077]}}]
+    trap_exit: false
     status: running
-    heap_size: 987
+    heap_size: 46422
     stack_size: 29
-    reductions: 234
+    reductions: 2435907
   neighbours:
-
-=INFO REPORT==== 10-Sep-2025::13:08:27.447671 ===
-    application: proj
-    exited: {bad_return,
-                {{proj_app,start,[normal,[]]},
-                 {'EXIT',
-                     {undef,
-                         [{db,wait_for_local_tables,[],[]},
-                          {proj_app,start,2,
-                              [{file,
-                                   "/home/csestudent/Desktop/bar/Proj/src/proj_app.erl"},
-                               {line,27}]},
-                          {application_master,start_it_old,4,
-                              [{file,"application_master.erl"},
-                               {line,293}]}]}}}}
-    type: temporary
-
-===> Failed to boot proj for reason {bad_return,
-                                                {{proj_app,start,[normal,[]]},
-                                                 {'EXIT',
-                                                  {undef,
-                                                   [{db,
-                                                     wait_for_local_tables,[],
-                                                     []},
-                                                    {proj_app,start,2,
-                                                     [{file,
-                                                       "/home/csestudent/Desktop/bar/Proj/src/proj_app.erl"},
-                                                      {line,27}]},
-                                                    {application_master,
-                                                     start_it_old,4,
-                                                     [{file,
-                                                       "application_master.erl"},
-                                                      {line,293}]}]}}}}
-=INFO REPORT==== 10-Sep-2025::13:08:27.448259 ===
-    application: gproc
-    exited: stopped
-    type: temporary
+    neighbour:
+      pid: <0.212.0>
+      registered_name: []
+      initial call: bloon:init/1
+      current_function: {timer,sleep,1}
+      ancestors: [region_3,worker_supervisor,<0.203.0>]
+      message_queue_len: 2
+      links: [<0.205.0>,<0.175.0>]
+      trap_exit: false
+      status: waiting
+      heap_size: 46422
+      stack_size: 35
+      reductions: 1707563
+      current_stacktrace: [{timer,sleep,1,[{file,"timer.erl"},{line,152}]},
+                  {mnesia_tm,restart,9,[{file,"mnesia_tm.erl"},{line,923}]},
+                  {bloon,moving,3,
+                         [{file,"/home/csestudent/Desktop/bar/erl_proj/Proj/BTD-Erlang-/BTD-Erlang-/src/bloon.erl"},
+                          {line,95}]},
+                  {gen_statem,loop_state_callback,11,
+                              [{file,"gen_statem.erl"},{line,1203}]},
+                  {proc_lib,init_p_do_apply,3,
+                            [{file,"proc_lib.erl"},{line,226}]}]
+    neighbour:
+      pid: <0.216.0>
+      registered_name: []
+      initial call: bloon:init/1
+      current_function: {gen_statem,loop_receive,3}
+      ancestors: [region_3,worker_supervisor,<0.203.0>]
+      message_queue_len: 0
+      links: [<0.205.0>]
+      trap_exit: false
+      status: waiting
+      heap_size: 10958
+      stack_size: 11
+      reductions: 1021001 
+      current_stacktrace: [{gen_statem,loop_receive,3,
+                              [{file,"gen_statem.erl"},{line,1043}]},
+                  {proc_lib,init_p_do_apply,3,
+                            [{file,"proc_lib.erl"},{line,226}]}]
+    neighbour:
+      pid: <0.220.0>
+      registered_name: []
+      initial call: bloon:init/1
+      current_function: {gen_statem,loop_receive,3}
+      ancestors: [region_3,worker_supervisor,<0.203.0>]
+      message_queue_len: 0
+      links: [<0.205.0>]
+      trap_exit: false
+      status: waiting
+      heap_size: 17731
+      stack_size: 11
+      reductions: 246618
+      current_stacktrace: [{gen_statem,loop_receive,3,
+                              [{file,"gen_statem.erl"},{line,1043}]},
+                  {proc_lib,init_p_do_apply,3,
+                            [{file,"proc_lib.erl"},{line,226}]}]
+    neighbour:
+      pid: <0.218.0>
+      registered_name: []
+      initial call: bloon:init/1
+      current_function: {gen_statem,loop_receive,3}
+      ancestors: [region_3,worker_supervisor,<0.203.0>]
+      message_queue_len: 0
+      links: [<0.205.0>]
+      trap_exit: false
+      status: waiting
+      heap_size: 46422
+      stack_size: 11
+      reductions: 674760
+      current_stacktrace: [{gen_statem,loop_receive,3,
+                              [{file,"gen_statem.erl"},{line,1043}]},
+                  {proc_lib,init_p_do_apply,3,
+                            [{file,"proc_lib.erl"},{line,226}]}]
+    neighbour:
+      pid: <0.214.0>
+      registered_name: []
+      initial call: bloon:init/1
+      current_function: {gen_statem,loop_receive,3}
+      ancestors: [region_3,worker_supervisor,<0.203.0>]
+      message_queue_len: 0
+      links: [<0.205.0>]
+      trap_exit: false
+      status: waiting
+      heap_size: 17731
+      stack_size: 11
+      reductions: 1226476
+      current_stacktrace: [{gen_statem,loop_receive,3,
+                              [{file,"gen_statem.erl"},{line,1043}]},
+                  {proc_lib,init_p_do_apply,3,
+                            [{file,"proc_lib.erl"},{line,226}]}]
+    neighbour:
+      pid: <0.205.0>
+      registered_name: region_3
+      initial call: region_server:init/1
+      current_function: {gen_server,loop,7}
+      ancestors: [worker_supervisor,<0.203.0>]
+      message_queue_len: 0
+      links: [<0.210.0>,<0.214.0>,<0.218.0>,<0.220.0>,<0.216.0>,<0.212.0>,
+                  <0.204.0>]
+      trap_exit: false
+      status: waiting
+      heap_size: 987
+      stack_size: 12
+      reductions: 1126
+      current_stacktrace: [{gen_server,loop,7,[{file,"gen_server.erl"},{line,443}]},
+                  {proc_lib,init_p_do_apply,3,
+                            [{file,"proc_lib.erl"},{line,226}]}]
+*DEBUG* Region Server 3 started on node 'worker4@132.72.81.224'.
+=SUPERVISOR REPORT==== 15-Sep-2025::07:17:17.327369 ===
+    supervisor: {local,worker_supervisor}
+    errorContext: child_terminated
+    reason: reached_end
+    offender: [{pid,<0.205.0>},
+               {id,{region_server,3}},
+               {mfargs,{region_server,start_link,[3,4,799]}},
+               {restart_type,permanent},
+               {significant,false},
+               {shutdown,5000},
+               {child_type,worker}]
