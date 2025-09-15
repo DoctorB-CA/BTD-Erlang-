@@ -46,7 +46,9 @@ delete_dart(I) -> gen_server:cast(gui, {delete_dart,I}).
 move_dart(I,P) -> gen_server:cast(gui, {move_dart,I,P}).
 refresh() -> gen_server:cast(gui, refresh).
 change_bananas(Amount) -> gen_server:cast(gui, {change_bananas, Amount}).
-lose_game() -> gen_server:cast(gui, lose_game).
+lose_game() -> 
+    io:format("*DEBUG* GUI:lose_game() called from ~p~n", [self()]),
+    gen_server:cast(gui, lose_game).
 clear_board() -> gen_server:cast(gui, clear_board).
 update_balloons(BalloonMap) -> gen_server:cast(gui, {update_balloons, BalloonMap}).
 update_darts(DartMap) -> gen_server:cast(gui, {update_darts, DartMap}).
@@ -196,29 +198,46 @@ handle_cast({change_bananas,A},S=#state{banana_text_widget=W})->
     {noreply,S};
 
 handle_cast(lose_game,S=#state{frame=F})->
+    % Clear the board when game is lost
+    io:format("*DEBUG* Game over - clearing GUI~n"),
+    NewS = S#state{balloons=#{}, darts=#{}},
+    wxWindow:refresh(S#state.board),
+    
     Dialog=wxMessageDialog:new(F,"You lose! Play again?",[{caption,"Game Over"},{style,?wxYES_NO}]),
     Result=wxMessageDialog:showModal(Dialog),
     wxMessageDialog:destroy(Dialog),
-    if Result==?wxID_YES->main_server:restart_game();
+    if Result==?wxID_YES->
+        % Clear board and refresh when restarting
+        gui:clear_board(),
+        io:format("*DEBUG* Player chose to restart~n");
     Result==?wxID_NO-> 
         wxFrame:close(F)
     end,
-    {noreply,S};
+    {noreply,NewS};
 
 handle_cast(clear_board,S)->
+    io:format("*DEBUG* GUI clearing all objects~n"),
+    wxWindow:refresh(S#state.board),
     {noreply,S#state{monkeys=#{},balloons=#{},darts=#{}}};
 
 handle_cast({update_balloons, BalloonMap}, S) ->
     % Update balloons and trigger ONE refresh per update cycle
-    % Always refresh to ensure dead objects are cleared
+    % Log when we receive empty maps for debugging
+    case maps:size(BalloonMap) of
+        0 -> io:format("*DEBUG* GUI received empty balloon map - clearing display~n");
+        N -> io:format("*DEBUG* GUI received ~p balloons~n", [N])
+    end,
     wxWindow:refresh(S#state.board),
     {noreply, S#state{balloons=BalloonMap}};
 
 handle_cast({update_darts, DartMap}, S) ->
-    % Update darts and ensure another refresh if balloons are empty
-    case maps:size(S#state.balloons) of
-        0 -> wxWindow:refresh(S#state.board); % Force refresh if no balloons
-        _ -> ok
+    % Update darts and force refresh if needed
+    case maps:size(DartMap) of
+        0 -> 
+            io:format("*DEBUG* GUI received empty dart map - clearing display~n"),
+            wxWindow:refresh(S#state.board); % Force refresh for empty darts
+        N -> 
+            io:format("*DEBUG* GUI received ~p darts~n", [N])
     end,
     {noreply, S#state{darts=DartMap}};
 

@@ -1,7 +1,7 @@
 -module(main_server).
 -behaviour(gen_server).
 -include("dbr.hrl").  % Include database records
--export([start_link/1, add_monkey/3, add_bloon/1, generate_level1/0]).
+-export([start_link/1, add_monkey/3, add_bloon/1, generate_level1/0, game_over/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -define(NUM_REGIONS, 4).
@@ -10,11 +10,12 @@
 
 
 % The state will now hold the actual PIDs of the remote regions.
--record(state, { region_pids = [] }).
+-record(state, { region_pids = [], game_over = false }).
 
 start_link(AllNodes) -> gen_server:start_link({local, ?MODULE}, ?MODULE, [AllNodes], []).
 add_monkey(Type, Pos, Range) -> gen_server:cast(?MODULE, {add_monkey, Type, Pos, Range}).
 add_bloon(Health) -> gen_server:cast(?MODULE, {add_bloon,Health}).
+game_over() -> gen_server:cast(?MODULE, game_over).
 
 init([AllNodes]) ->
     io:format("Main Server started. Waiting for all regions to report in...~n"),
@@ -35,6 +36,17 @@ init([AllNodes]) ->
     
     {ok, #state{region_pids = RegionPids}}.
 
+
+handle_cast(game_over, State = #state{game_over = GameOver}) ->
+    case GameOver of
+        false ->
+            io:format("*DEBUG* GAME OVER! First balloon reached the end~n"),
+            gui:lose_game(),
+            {noreply, State#state{game_over = true}};
+        true ->
+            io:format("*DEBUG* Game already over, ignoring additional balloon end~n"),
+            {noreply, State}
+    end;
 
 handle_cast({add_monkey, Type, Pos = {X, Y}, Range}, State = #state{region_pids = Pids}) ->
     RegionIndex = trunc(X / ?REGION_WIDTH),
@@ -84,14 +96,7 @@ handle_info(update_gui_balloons, State) ->
     % This is the most efficient way for high-frequency updates
     AllBloons = db:get_all_bloons(),  % 1 database query for balloons
     AllDarts = db:get_all_darts(),    % 1 database query for darts
-    % Only update GUI if there are actually objects to display
-    case {AllBloons, AllDarts} of
-        {[], []} ->
-            % No objects to display - don't trigger unnecessary refresh
-            ok;
-        _ ->
-            update_gui_with_objects(AllBloons, AllDarts)  % 1 message to GUI
-    end,
+    update_gui_with_objects(AllBloons, AllDarts),  % 1 message to GUI
     {noreply, State};
 
 handle_info(_Info, State) ->
@@ -108,6 +113,11 @@ update_gui_with_objects(AllBloons, AllDarts) ->
     DartMap = maps:from_list([
         {Id, {Type, Pos}} || #dart{id=Id, type=Type, pos=Pos} <- AllDarts
     ]),
+    % DEBUG: Log when we send empty maps
+    case {maps:size(BalloonMap), maps:size(DartMap)} of
+        {0, 0} -> io:format("*DEBUG* Sending empty balloon and dart maps to GUI~n");
+        {B, D} -> io:format("*DEBUG* Sending ~p balloons, ~p darts to GUI~n", [B, D])
+    end,
     % SIMPLE: Send everything to GUI in separate messages
     gui:update_balloons(BalloonMap),
     gui:update_darts(DartMap).

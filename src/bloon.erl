@@ -93,7 +93,14 @@ moving(state_timeout, move, Data=#state{id=BloonId, health=H, index=PI, region_i
     if
         NewPos =:= undefined ->
             % Balloon reached the end - player loses!
-            gui:lose_game(),
+            io:format("*DEBUG* Balloon ~p reached END! Calling main_server:game_over()~n", [BloonId]),
+            try
+                main_server:game_over(),
+                io:format("*DEBUG* main_server:game_over() called successfully~n")
+            catch
+                Error:Reason ->
+                    io:format("*ERROR* main_server:game_over() failed: ~p:~p~n", [Error, Reason])
+            end,
             {stop, normal, Data};
         true ->
             db:write_bloon(#bloon{id=BloonId, health=H, index=NextIdx, pos=NewPos, region_id=RId}),
