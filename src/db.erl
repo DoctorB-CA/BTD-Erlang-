@@ -1,5 +1,5 @@
 -module(db).
--export([init/1, db_clear/0]).
+-export([init/1, db_clear/0, revive_region/2]).
 -export([write_bloon/1, delete_bloon/1, write_monkey/1, delete_monkey/1]).
 -export([write_dart/1, delete_dart/1, get_all_darts/0]).
 -export([get_bloons_in_regions/1, get_all_bloons/0]).
@@ -100,6 +100,78 @@ db_clear() ->
         {aborted, Reason} ->
             io:format("*ERROR* DB: Failed to clear tables: ~p~n", [Reason]),
             {error, Reason}
+    end.
+
+%% @doc Revive a dead region by reinitializing Mnesia and reconnecting to cluster.
+%% This is called when a region node dies and needs to be brought back online.
+revive_region(DeadNode, MainNode) ->
+    io:format("*DEBUG* DB: Reviving dead region ~p (main: ~p)~n", [DeadNode, MainNode]),
+    
+    try
+        % Step 1: Stop Mnesia on the dead node (in case it's partially running)
+        io:format("*DEBUG* DB: Stopping Mnesia on dead node ~p~n", [DeadNode]),
+        case rpc:call(DeadNode, mnesia, stop, []) of
+            ok -> ok;
+            {badrpc, Reason} -> 
+                io:format("*DEBUG* DB: Could not stop Mnesia on ~p: ~p (probably already stopped)~n", [DeadNode, Reason]);
+            _ -> ok
+        end,
+        timer:sleep(1000),
+        
+        % Step 2: Start Mnesia on the dead node
+        io:format("*DEBUG* DB: Starting Mnesia on revived node ~p~n", [DeadNode]),
+        case rpc:call(DeadNode, mnesia, start, []) of
+            ok -> ok;
+            {badrpc, Reason2} ->
+                io:format("*ERROR* DB: Failed to start Mnesia on ~p: ~p~n", [DeadNode, Reason2]),
+                throw({mnesia_start_failed, Reason2});
+            {error, Reason3} ->
+                io:format("*ERROR* DB: Mnesia start error on ~p: ~p~n", [DeadNode, Reason3]),
+                throw({mnesia_start_failed, Reason3})
+        end,
+        timer:sleep(2000), % Give Mnesia time to start
+        
+        % Step 3: Connect the revived node to the main node
+        io:format("*DEBUG* DB: Connecting revived node ~p to main node ~p~n", [DeadNode, MainNode]),
+        case rpc:call(DeadNode, mnesia, change_config, [extra_db_nodes, [MainNode]]) of
+            {ok, ConnectedNodes} ->
+                io:format("*DEBUG* DB: Revived node connected to: ~p~n", [ConnectedNodes]);
+            {error, ConnectReason} ->
+                io:format("*ERROR* DB: Failed to connect revived node to main: ~p~n", [ConnectReason]),
+                throw({connection_failed, ConnectReason});
+            {badrpc, BadRpcReason} ->
+                io:format("*ERROR* DB: RPC failed when connecting revived node: ~p~n", [BadRpcReason]),
+                throw({rpc_failed, BadRpcReason})
+        end,
+        timer:sleep(1000),
+        
+        % Step 4: Wait for tables to be available on the revived node
+        io:format("*DEBUG* DB: Waiting for tables on revived node ~p~n", [DeadNode]),
+        case rpc:call(DeadNode, mnesia, wait_for_tables, [[bloon, monkey, dart], 20000]) of
+            ok ->
+                io:format("*DEBUG* DB: All tables ready on revived node ~p~n", [DeadNode]),
+                ok;
+            {timeout, BadTables} ->
+                io:format("*ERROR* DB: Timeout waiting for tables ~p on revived node~n", [BadTables]),
+                throw({table_timeout, BadTables});
+            {error, TableError} ->
+                io:format("*ERROR* DB: Table error on revived node: ~p~n", [TableError]),
+                throw({table_error, TableError});
+            {badrpc, TableRpcReason} ->
+                io:format("*ERROR* DB: RPC failed waiting for tables: ~p~n", [TableRpcReason]),
+                throw({table_rpc_failed, TableRpcReason})
+        end,
+        
+        io:format("*DEBUG* DB: Region ~p successfully revived and ready!~n", [DeadNode]),
+        {ok, revived}
+        
+    catch
+        throw:ThrowReason ->
+            io:format("*ERROR* DB: Failed to revive region ~p: ~p~n", [DeadNode, ThrowReason]),
+            {error, ThrowReason};
+        Error:CatchReason ->
+            io:format("*ERROR* DB: Unexpected error reviving region ~p: ~p:~p~n", [DeadNode, Error, CatchReason]),
+            {error, {unexpected_error, Error, CatchReason}}
     end.
 
 

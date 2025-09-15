@@ -110,17 +110,81 @@ handle_cast({balloon_destroyed, BloonId, OriginalHealth}, State = #region_state{
     {noreply, State};
 
 handle_cast(restart_cleanup, State = #region_state{id = RegionId}) ->
-    io:format("*DEBUG* Region ~p: Received restart_cleanup - database cleared, processes will terminate naturally~n", [RegionId]),
+    io:format("*DEBUG* Region ~p: AGGRESSIVE RESTART CLEANUP - killing ALL game processes~n", [RegionId]),
     
-    % Simple approach: processes will terminate naturally when they try to access
-    % deleted database records. This is safer than aggressively killing processes.
     try
-        % Just log that cleanup was requested - the database clearing in main_server
-        % should be sufficient to cause game processes to terminate gracefully
-        io:format("*DEBUG* Region ~p: Cleanup completed - processes will fail naturally on DB access~n", [RegionId])
+        % Phase 1: Kill ALL globally registered processes on this node
+        io:format("*DEBUG* Region ~p: Phase 1 - Killing globally registered processes~n", [RegionId]),
+        GlobalNames = global:registered_names(),
+        GlobalKillCount = lists:foldl(fun(Name, Count) ->
+            case global:whereis_name(Name) of
+                Pid when is_pid(Pid) ->
+                    case node(Pid) =:= node() of
+                        true -> 
+                            try
+                                io:format("*DEBUG* Region ~p: Killing global process ~p (~p)~n", [RegionId, Name, Pid]),
+                                exit(Pid, kill),
+                                global:unregister_name(Name),
+                                Count + 1
+                            catch
+                                _:_ -> Count
+                            end;
+                        false -> Count
+                    end;
+                undefined -> Count
+            end
+        end, 0, GlobalNames),
+        
+        % Phase 2: Kill ALL processes that match balloon or monkey modules
+        io:format("*DEBUG* Region ~p: Phase 2 - Killing bloon/monkey processes by module~n", [RegionId]),
+        AllPids = erlang:processes(),
+        ModuleKillCount = lists:foldl(fun(Pid, Count) ->
+            try
+                case node(Pid) =:= node() andalso is_process_alive(Pid) of
+                    true ->
+                        case process_info(Pid, initial_call) of
+                            {initial_call, {Module, _, _}} when Module =:= bloon; Module =:= monkey ->
+                                io:format("*DEBUG* Region ~p: Killing ~p process ~p~n", [RegionId, Module, Pid]),
+                                exit(Pid, kill),
+                                Count + 1;
+                            _ -> Count
+                        end;
+                    false -> Count
+                end
+            catch
+                _:_ -> Count
+            end
+        end, 0, AllPids),
+        
+        % Phase 3: Kill any remaining locally registered processes (except system ones)
+        io:format("*DEBUG* Region ~p: Phase 3 - Killing remaining local processes~n", [RegionId]),
+        LocalNames = registered(),
+        SystemProcesses = [init, error_logger, application_controller, kernel_sup, 
+                          code_server, file_server_2, standard_error, user, 
+                          region_server, worker_supervisor, gui, main_server],
+        LocalKillCount = lists:foldl(fun(Name, Count) ->
+            case lists:member(Name, SystemProcesses) of
+                false ->
+                    case whereis(Name) of
+                        Pid when is_pid(Pid) ->
+                            try
+                                io:format("*DEBUG* Region ~p: Killing local process ~p (~p)~n", [RegionId, Name, Pid]),
+                                exit(Pid, kill),
+                                Count + 1
+                            catch
+                                _:_ -> Count
+                            end;
+                        undefined -> Count
+                    end;
+                true -> Count
+            end
+        end, 0, LocalNames),
+        
+        io:format("*DEBUG* Region ~p: AGGRESSIVE CLEANUP COMPLETE - killed ~p global, ~p module-based, ~p local processes~n", 
+                 [RegionId, GlobalKillCount, ModuleKillCount, LocalKillCount])
     catch
         Error:Reason ->
-            io:format("*ERROR* Region ~p: Error during cleanup: ~p:~p~n", [RegionId, Error, Reason])
+            io:format("*ERROR* Region ~p: Error during aggressive cleanup: ~p:~p~n", [RegionId, Error, Reason])
     end,
     {noreply, State}.
 
