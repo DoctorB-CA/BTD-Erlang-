@@ -166,9 +166,9 @@ handle_region_crossing(#state{id=BloonId, pos = {NewX, _} = CurrentPos, index = 
 get_path() ->
      %% Path: {0,200} -> {200,200} -> {200,400} -> {500,400} -> {500,200} -> {300,200} -> {300,600} -> {799,600}
     Start = {0,300},
-    Path1 = right(Start, 600),                % {0,200} -> {180,200}
-    Path2 = up(lists:last(Path1), 200),       % {180,200} -> {200,400}
-    Path3 = right(lists:last(Path2), 799),    % {200,400} -> {500,400}
+    Path1 = right(Start, 600),                % {0,300} -> {600,200}
+    Path2 = up(lists:last(Path1), 200),       % {600,200} -> {200,400}
+    Path3 = right(lists:last(Path2), 199),    % {600,400} -> {799,400}
     
     %Path4 = down(lists:last(Path3), 200),     % {500,400} -> {500,200}
     %Path5 = left(lists:last(Path4), 200),     % {500,200} -> {300,200}
