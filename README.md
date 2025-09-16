@@ -1,5 +1,15 @@
 # BTD-Erlang Distributed Game Architecture
+Authors: Bar Cohen Aharonson and Noam Navon 
+Ben Gurion University, 
+Department: Electrical and Computer Engineering
+Course: Functional Programming in Concurrent and Distributed Systems using Erlang 
+Lecturer: Dr. Yehuda Ben-Shimol
+Teaching Assistant: Mr. Guy Perets
 
+Link to youtube: --link-- <no exist>
+link to presentation :  --<exist in the git>
+
+how to run this project: -- <exist in the gui>
 ## Main Architecture Diagram
 
 ```mermaid

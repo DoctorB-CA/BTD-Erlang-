@@ -1,16 +1,37 @@
 %% ===================================================================
-%% BTD-Erlang Distributed Startup Script
+%% BTD-Erlang Distributed Game - How to Run
+%% ===================================================================
+
+%% ===================================================================
+%% PREREQUISITES - Do this on EVERY PC first:
+%% ===================================================================
+
+%% 1. Compile the project on every PC:
+%%    rebar3 compile
+
+%% 2. Start worker nodes on worker PCs:
+%%    Worker PC 1 (132.72.81.167): ./start_worker1.sh
+%%    Worker PC 2 (132.72.81.85):  ./start_worker2.sh  
+%%    Worker PC 3 (132.72.80.185): ./start_worker3.sh
+%%    Worker PC 4 (132.72.81.224): ./start_worker4.sh
+
+%% 3. Start main node on main PC:
+%%    Main PC (132.72.81.60): ./start_main.sh
+
+%% 4. Wait for all nodes to be fully started before proceeding
+
+%% ===================================================================
+%% DISTRIBUTED STARTUP SCRIPT - Run in MAIN node Erlang shell
 %% ===================================================================
 %% Run these commands one-by-one in the Erlang shell of the MAIN node
 %% after starting the shells on all worker nodes.
-%%
 
 %% Step 1: Define all nodes in the cluster
 MainNode = node().
-Worker1 = 'worker1@132.72.81.167'.
-Worker2 = 'worker2@132.72.81.85'.
-Worker3 = 'worker3@132.72.80.185'.
-Worker4 = 'worker4@132.72.81.224'.
+Worker1 = 'worker1@132.72.81.167'.    %%if using difrent pc chnage here the ip
+Worker2 = 'worker2@132.72.81.85'.    %%if using difrent pc chnage here the ip
+Worker3 = 'worker3@132.72.80.185'.    %%if using difrent pc chnage here the ip
+Worker4 = 'worker4@132.72.81.224'.    %%if using difrent pc chnage here the ip
 AllWorkerNodes = [Worker1, Worker2, Worker3, Worker4].
 AllNodes = [MainNode | AllWorkerNodes].
 
@@ -38,44 +59,4 @@ rpc:call(Worker4, worker_supervisor, start_as_root, [3, 4]).
 main_supervisor:start_link(AllWorkerNodes).
 gui:start_link().
 
-%% Step 7: Test the System by adding a monkey
-%main_server:add_monkey(ground_monkey, {40, 150}, 80).
-
-%% Step 8: Test the System by adding balloons
-%% Balloons will generate their own path internally and move every 50ms
-%% GUI will update at 60 FPS (16ms) for ultra-smooth movement
-%% Start Wave button creates 5 balloons with 200ms spacing
-%main_server:add_bloon(5).
-
-
-%% Step 7: Test the System by adding a monkey
-%main_server:add_monkey(ground_monkey, {40, 150}, 80).
-
-
-%% Step 8: Test the System by adding balloons
-%% Balloons will generate their own path internally and move every 100ms
-%% GUI will update at 20 FPS (50ms) to show smooth movement
-%main_server:add_bloon(1).
-
-
-%% ===================================================================
-%% REGION REVIVAL COMMANDS (if a worker node dies)
-%% ===================================================================
-%% If a worker node dies and you restart it, use these commands:
-
-%% Step 1: Check which regions are dead
-%main_server:check_and_revive_regions().
-
-%% Step 2: If you need to manually revive a specific region
-%% (replace 'worker1@132.72.81.167' with the actual dead node)
-%MainNode = node().
-%DeadNode = 'worker1@132.72.81.167'.
-%db:revive_region(DeadNode, MainNode).
-
-%% Step 3: Restart the region supervisor on the revived node
-%RegionId = 0.  % Use 0 for worker1, 1 for worker2, etc.
-%rpc:call(DeadNode, worker_supervisor, start_as_root, [RegionId, 4]).
-
-%% Note: If balloons were on the dead region, they are lost.
-%% New balloons will work normally after revival.
-
+%% step 7: START PLAYING!
