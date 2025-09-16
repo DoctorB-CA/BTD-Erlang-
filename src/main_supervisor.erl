@@ -1,18 +1,18 @@
 -module(main_supervisor).
 -behaviour(supervisor).
--export([start_link/0, init/1]).
+-export([start_link/1, init/1]).
 
-% start_link no longer needs worker nodes - they connect dynamically
-start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+% start_link now takes the list of worker nodes as an argument
+start_link(AllWorkerNodes) ->
+    supervisor:start_link({local, ?MODULE}, ?MODULE, [AllWorkerNodes]).
 
-% init starts with empty worker list
-init([]) ->
-    io:format("Main Supervisor starting with dynamic worker discovery.~n"),
+% init receives the worker nodes from start_link
+init([AllWorkerNodes]) ->
+    io:format("Main Supervisor starting.~n"),
 
     MainServerSpec = #{
         id => main_server,
-        start => {main_server, start_link, []},
+        start => {main_server, start_link, [AllWorkerNodes]},
         restart => permanent,
         shutdown => 2000,
         type => worker,
