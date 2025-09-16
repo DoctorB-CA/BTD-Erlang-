@@ -218,18 +218,9 @@ handle_cast(lose_game,S=#state{frame=F})->
         ?wxID_YES ->
             % Clear board and refresh when restarting
             gui:clear_board(),
-            io:format("*DEBUG* Player chose to restart - beginning aggressive cleanup~n"),
-            
             % Notify main server to restart the game (clears database)
             main_server:restart_game(),
-            
-            % Give time for aggressive cleanup to complete
-            timer:sleep(500),
-            
-            % Force a final board clear after cleanup
-            gui:clear_board(),
-            
-            io:format("*DEBUG* Game restart completed~n");
+            io:format("*DEBUG* Player chose to restart the game~n");
         ?wxID_NO -> 
             io:format("*DEBUG* Player chose to quit the game~n"),
             wxFrame:close(F);
