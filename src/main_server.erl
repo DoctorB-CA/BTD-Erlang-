@@ -1,7 +1,7 @@
 -module(main_server).
 -behaviour(gen_server).
 -include("dbr.hrl").  % Include database records
--export([start_link/1, add_monkey/3, add_bloon/1, generate_level1/0, game_over/0, restart_game/0, check_and_revive_regions/0]).
+-export([start_link/1, add_monkey/3, add_bloon/1, generate_level1/0, game_over/0, restart_game/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -define(NUM_REGIONS, 4).
@@ -90,98 +90,29 @@ handle_cast(game_over, State = #state{game_over = GameOver}) ->
     end;
 
 handle_cast(restart_game, State = #state{region_pids = RegionPids}) ->
-    io:format("*DEBUG* ========== AGGRESSIVE GAME RESTART ==========~n"),
-    
-    % Phase 1: Immediately kill ALL game processes on the main node
-    io:format("*DEBUG* Phase 1: Killing ALL game processes on main node~n"),
-    AllPids = erlang:processes(),
-    MainNodeKills = lists:foldl(fun(Pid, Count) ->
-        try
-            case is_process_alive(Pid) of
-                true ->
-                    case process_info(Pid, initial_call) of
-                        {initial_call, {Module, _, _}} when Module =:= bloon; Module =:= monkey ->
-                            io:format("*DEBUG* Main: Killing ~p process ~p~n", [Module, Pid]),
-                            exit(Pid, kill),
-                            Count + 1;
-                        _ -> Count
-                    end;
-                false -> Count
-            end
-        catch
-            _:_ -> Count
-        end
-    end, 0, AllPids),
-    
-    % Phase 2: Clear ALL global registrations immediately
-    io:format("*DEBUG* Phase 2: Clearing ALL global registrations~n"),
-    GlobalNames = global:registered_names(),
-    GlobalClears = lists:foldl(fun(Name, Count) ->
-        try
-            case global:whereis_name(Name) of
-                Pid when is_pid(Pid) ->
-                    io:format("*DEBUG* Main: Killing and unregistering ~p (~p)~n", [Name, Pid]),
-                    exit(Pid, kill),
-                    global:unregister_name(Name),
-                    Count + 1;
-                undefined -> 
-                    global:unregister_name(Name), % Clean up stale registrations
-                    Count + 1
-            end
-        catch
-            _:_ -> Count
-        end
-    end, 0, GlobalNames),
-    
-    % Phase 3: Clear database AFTER killing processes
-    io:format("*DEBUG* Phase 3: Clearing database~n"),
+    % Clear all database tables when restarting
+    io:format("*DEBUG* Restarting game - clearing all database tables~n"),
     db:db_clear(),
     
-    % Phase 4: Notify all region servers to do aggressive cleanup
-    io:format("*DEBUG* Phase 4: Notifying regions for aggressive cleanup~n"),
+    % Notify all region servers to clean up their processes
+    io:format("*DEBUG* Notifying all regions to clean up processes~n"),
     lists:foreach(fun(RegionPid) ->
         case is_pid(RegionPid) of
             true ->
                 gen_server:cast(RegionPid, restart_cleanup),
-                io:format("*DEBUG* Sent aggressive cleanup to region ~p~n", [RegionPid]);
+                io:format("*DEBUG* Sent restart_cleanup to region ~p~n", [RegionPid]);
             false ->
                 io:format("*ERROR* Invalid region PID: ~p~n", [RegionPid])
         end
     end, RegionPids),
     
-    % Phase 5: Wait for cleanup and final verification
-    timer:sleep(500), % Give more time for thorough cleanup
+    % Give regions time to complete cleanup before allowing new operations
+    timer:sleep(500),
     
-    % Phase 6: Final verification - check for any remaining game processes
-    io:format("*DEBUG* Phase 6: Final verification~n"),
-    RemainingPids = erlang:processes(),
-    RemainingGameProcesses = lists:filter(fun(Pid) ->
-        try
-            case is_process_alive(Pid) of
-                true ->
-                    case process_info(Pid, initial_call) of
-                        {initial_call, {Module, _, _}} when Module =:= bloon; Module =:= monkey ->
-                            io:format("*WARNING* Found remaining game process: ~p (~p)~n", [Module, Pid]),
-                            true;
-                        _ -> false
-                    end;
-                false -> false
-            end
-        catch
-            _:_ -> false
-        end
-    end, RemainingPids),
-    
-    % Reset bananas and game state
+    % Reset bananas when game restarts
     NewBananas = 1000,
     gui:change_bananas(NewBananas),
-    gui:clear_board(), % Immediately clear GUI to show restart
-    
-    io:format("*DEBUG* ========== RESTART COMPLETE ==========~n"),
-    io:format("*DEBUG* Killed ~p main processes, cleared ~p globals, ~p remaining game processes~n", 
-             [MainNodeKills, GlobalClears, length(RemainingGameProcesses)]),
-    io:format("*DEBUG* Game ready for new balloons and monkeys~n"),
-    
+    io:format("*DEBUG* Game restarted, bananas reset to ~p~n", [NewBananas]),
     {noreply, State#state{game_over = false, bananas = NewBananas}};
 
 handle_cast({balloon_destroyed, BloonId, OriginalHealth}, State = #state{bananas = CurrentBananas}) ->
@@ -275,21 +206,7 @@ handle_cast({add_bloon, Health}, State = #state{region_pids = Pids}) ->
     RegionPid = lists:nth(RegionIndex + 1, Pids),
     % This is now much simpler and correct. We already have the PIDs.
     gen_server:cast(RegionPid, {spawn_bloon, Health, Pids, RegionIndex}),
-    {noreply, State};
-
-handle_cast({update_region_pid, RegionId, NewPid}, State = #state{region_pids = RegionPids}) ->
-    % Update the PID for a revived region
-    io:format("*DEBUG* Updating region ~p PID to ~p~n", [RegionId, NewPid]),
-    NewRegionPids = update_list_at_index(RegionPids, RegionId + 1, NewPid),
-    io:format("*DEBUG* Updated region PIDs: ~p~n", [NewRegionPids]),
-    {noreply, State#state{region_pids = NewRegionPids}}.
-
-handle_call(get_region_info, _From, State = #state{region_pids = RegionPids}) ->
-    % Return region pids and node info for health checking
-    MainNode = node(),
-    WorkerNodes = [node(Pid) || Pid <- RegionPids],
-    AllNodes = [MainNode | WorkerNodes],
-    {reply, {ok, {RegionPids, AllNodes}}, State};
+    {noreply, State}.
 
 handle_call(_Request, _From, State) -> {reply, ok, State}.
 
@@ -339,84 +256,9 @@ generate_level1() ->
         lists:foreach(fun(N) ->
             main_server:add_bloon(1),
             io:format("Spawned balloon ~p/5~n", [N]),
-            timer:sleep(700)  % 700ms between balloons
-        end, lists:seq(1, 20))
+            timer:sleep(200)  % 200ms between balloons
+        end, lists:seq(1, 5))
     end).
-
-generate_level2() ->
-    %% Spawn balloons with proper timing to avoid GUI overload
-    spawn(fun() ->
-        lists:foreach(fun(N) ->
-            main_server:add_bloon(1),
-            io:format("Spawned balloon ~p/5~n", [N]),
-            timer:sleep(500)  % 500ms between balloons
-        end, lists:seq(1, 40))
-    end).
-
-generate_levelinf() ->
-    %% Spawn balloons with proper timing to avoid GUI overload
-    spawn(fun() ->
-        lists:foreach(fun(N) ->
-            main_server:add_bloon(1),
-            io:format("Spawned balloon ~p/5~n", [N]),
-            timer:sleep(500)  % 500ms between balloons
-        end, lists:seq(1, 1))
-    end).
-
-%% --- Function to check and revive dead regions ---
-check_and_revive_regions() ->
-    case gen_server:call(?MODULE, get_region_info) of
-        {ok, {RegionPids, AllNodes}} ->
-            MainNode = node(),
-            WorkerNodes = AllNodes -- [MainNode],
-            io:format("*DEBUG* Checking health of regions: ~p~n", [RegionPids]),
-            io:format("*DEBUG* Worker nodes: ~p~n", [WorkerNodes]),
-            
-            % Check each region and revive if dead
-            RegionData = lists:zip3(RegionPids, lists:seq(0, ?NUM_REGIONS - 1), WorkerNodes),
-            lists:foreach(fun({RegionPid, RegionId, Node}) ->
-                % First check if the node itself is reachable
-                case net_adm:ping(Node) of
-                    pong ->
-                        % Node is reachable, check if process is alive
-                        case is_process_alive(RegionPid) of
-                            true ->
-                                io:format("*DEBUG* Region ~p (~p) is alive~n", [RegionId, Node]);
-                            false ->
-                                io:format("*WARNING* Region ~p (~p) process is DEAD but node is reachable - attempting revival~n", [RegionId, Node]),
-                                revive_dead_region(RegionId, [Node])
-                        end;
-                    pang ->
-                        io:format("*ERROR* Region ~p (~p) is UNREACHABLE - network disconnected or node down~n", [RegionId, Node]),
-                        io:format("*INFO* Cannot revive region ~p until network connectivity is restored~n", [RegionId])
-                end
-            end, RegionData);
-        Error ->
-            io:format("*ERROR* Could not get region info: ~p~n", [Error])
-    end.
-
-%% Helper function to revive a dead region
-revive_dead_region(RegionId, WorkerNodes) ->
-    try
-        % Attempt to revive the database connection for this region
-        case db:revive_region(RegionId, WorkerNodes) of
-            ok ->
-                io:format("Successfully revived database for region ~p~n", [RegionId]),
-                % Try to restart the region supervisor
-                try
-                    gen_statem:start({global, {region_server, RegionId}}, region_server, [RegionId], []),
-                    io:format("Successfully revived region ~p~n", [RegionId])
-                catch
-                    StartError:StartReason ->
-                        io:format("*ERROR* Failed to restart region supervisor for region ~p: ~p:~p~n", [RegionId, StartError, StartReason])
-                end;
-            {error, DbReason} ->
-                io:format("*ERROR* Failed to revive database for region ~p: ~p~n", [RegionId, DbReason])
-        end
-    catch
-        Error:Reason ->
-            io:format("*ERROR* Unexpected error reviving region ~p: ~p:~p~n", [RegionId, Error, Reason])
-    end.
 
 %% --- Helper function to get monkey costs ---
 get_monkey_cost(ground_monkey) -> ?GROUND_MONKEY_COST;
@@ -425,9 +267,4 @@ get_monkey_cost(fire_monkey) -> ?FIRE_MONKEY_COST;
 get_monkey_cost(air_monkey) -> ?AIR_MONKEY_COST;
 get_monkey_cost(avatar_monkey) -> ?AVATAR_MONKEY_COST;
 get_monkey_cost(_) -> 0.  % Unknown monkey type costs nothing
-
-%% --- Helper function to update list at specific index ---
-update_list_at_index(List, Index, NewValue) ->
-    {Before, [_|After]} = lists:split(Index - 1, List),
-    Before ++ [NewValue] ++ After.
 
