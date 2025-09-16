@@ -6,10 +6,10 @@ Course: Functional Programming in Concurrent and Distributed Systems using Erlan
 Lecturer: Dr. Yehuda Ben-Shimol
 Teaching Assistant: Mr. Guy Perets
 
-Link to youtube: --link-- <no exist>
-link to presentation :  --<exist in the git>
+Link to youtube: --link <no exist yet>--  
+Link to presentation: [BTD-Erlang PowerPoint Presentation](./documentation/PowerPoint-BTD.pptx)  
 
-how to run this project: -- <exist in the gui>
+How to run this project: [Project Setup & Run Instructions](./how%20to%20run%20this%20project.txt)
 ## Main Architecture Diagram
 
 ```mermaid
