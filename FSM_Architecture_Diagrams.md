@@ -254,91 +254,110 @@ stateDiagram-v2
 ## FSM Communication Overview
 
 ```mermaid
-flowchart LR
-    M[Monkey FSM] -->|find_bloon| R[Region Server]
-    R -->|{ok, BloonId}| M
-    M -->|spawn| A[Arrow FSM]
-    A -->|{hit, Damage}| B[Bloon FSM]
-    B -->|banana_reward| R
-    R -->|banana_reward| MS[Main Server]
-    MS -->|update| GUI[GUI]
-    
-    subgraph "Database"
-        DB[(Mnesia)]
+flowchart TD
+    subgraph "Game Objects Communication"
+        M[Monkey FSM] -->|find_bloon request| R[Region Server]
+        R -->|BloonId response| M
+        M -->|spawn arrow| A[Arrow FSM]
+        A -->|hit with damage| B[Bloon FSM]
+        B -->|banana_reward| R
+        R -->|forward reward| MS[Main Server]
+        MS -->|banana update| GUI[GUI]
     end
     
-    M -.->|write_monkey| DB
-    B -.->|write/delete_bloon| DB
-    A -.->|write/delete_dart| DB
-    R -.->|read queries| DB
+    subgraph "Database Operations"
+        DB[(Mnesia Database)]
+        M -.->|write monkey| DB
+        B -.->|write/delete bloon| DB
+        A -.->|write/delete dart| DB
+        R -.->|read queries| DB
+    end
+    
+    subgraph "Cross-Region Communication"
+        R -->|find_bloon query| R2[Other Regions]
+        R2 -->|bloon data| R
+        B -->|migration| R3[Target Region]
+        R3 -->|spawn migrated bloon| B2[New Bloon FSM]
+    end
 ```
 
 ## Gen_Server Communication & Message Flow
 
 ```mermaid
-flowchart LR
-    subgraph "User Interaction"
-        User[Player] -->|Click/Button| GUI
+flowchart TD
+    subgraph "User Layer"
+        User[Player] -->|Click/Button Events| GUI[GUI Server]
     end
     
     subgraph "Main Node"
-        GUI[GUI Server] 
+        GUI
         MS[Main Server]
     end
     
     subgraph "Worker Nodes"
-        R1[Region 0]
-        R2[Region 1] 
-        R3[Region 2]
-        R4[Region 3]
+        R1[Region Server 0]
+        R2[Region Server 1] 
+        R3[Region Server 2]
+        R4[Region Server 3]
     end
     
-    subgraph "Game Objects"
+    subgraph "Game Objects Layer"
         M[Monkey FSMs]
         B[Bloon FSMs]
         A[Arrow FSMs]
     end
     
-    %% User to GUI
-    GUI -->|place_item| MS
-    GUI <--|change_bananas| MS
-    GUI <--|lose_game| MS
+    subgraph "Database Layer"
+        DB[(Mnesia Database)]
+    end
+    
+    %% User to Main System
+    GUI -->|place_item requests| MS
+    MS -->|banana updates| GUI
+    MS -->|lose_game signal| GUI
     
     %% Main Server to Regions
-    MS -->|spawn_monkey/bloon| R1
-    MS -->|spawn_monkey/bloon| R2
-    MS -->|spawn_monkey/bloon| R3
-    MS -->|spawn_monkey/bloon| R4
+    MS -->|spawn_monkey commands| R1
+    MS -->|spawn_monkey commands| R2
+    MS -->|spawn_bloon commands| R3
+    MS -->|spawn_bloon commands| R4
     MS -->|restart_cleanup| R1
     MS -->|restart_cleanup| R2
     MS -->|restart_cleanup| R3
     MS -->|restart_cleanup| R4
     
     %% Regions to Main Server  
-    R1 -->|game_over/banana_reward| MS
-    R2 -->|game_over/banana_reward| MS
-    R3 -->|game_over/banana_reward| MS
-    R4 -->|game_over/banana_reward| MS
+    R1 -->|game_over events| MS
+    R2 -->|banana_reward events| MS
+    R3 -->|game_over events| MS
+    R4 -->|banana_reward events| MS
     
     %% Regions spawn Game Objects
     R1 --> M
     R1 --> B
     R2 --> M
     R2 --> B
-    R3 --> M
-    R3 --> B
-    R4 --> M
-    R4 --> B
+    R3 --> A
+    R4 --> A
     
     %% Game Object Interactions
-    M -->|find_bloon| R1
-    M -->|spawn arrow| A
-    A -->|hit damage| B
-    B -->|destruction reward| R1
+    M -->|find_bloon queries| R1
+    M -->|spawn_arrow commands| A
+    A -->|hit_damage messages| B
+    B -->|destruction_reward| R1
     
     %% GUI Updates
-    MS -->|update_balloons/darts| GUI
-    MS -.->|33ms timer| MS
+    MS -->|update_balloons batch| GUI
+    MS -->|update_darts batch| GUI
+    
+    %% Database Operations
+    M -.->|read/write| DB
+    B -.->|read/write| DB
+    A -.->|read/write| DB
+    R1 -.->|queries| DB
+    R2 -.->|queries| DB
+    R3 -.->|queries| DB
+    R4 -.->|queries| DB
 ```
 
 ## Message Types & Frequencies
@@ -366,3 +385,249 @@ flowchart LR
 | **Region** | Region ID only | Process enumeration & kill | Supervisor restart |
 
 **Database Role:** Central state store for all game objects, cross-node replication, ACID transactions
+
+---
+
+# Mnesia Database Architecture
+
+## 7. Mnesia Distributed Database System
+
+```mermaid
+flowchart TD
+    subgraph "Main Node - btd@localhost"
+        MainSchema[(Schema<br/>Disc Copies)]
+        MainBloon[(Bloon Table<br/>Disc Copies)]
+        MainMonkey[(Monkey Table<br/>Disc Copies)]
+        MainDart[(Dart Table<br/>Disc Copies)]
+        MainMnesia[Mnesia Process<br/>Main Node]
+    end
+    
+    subgraph "Worker Node 1 - worker1@localhost"
+        W1Schema[(Schema<br/>RAM Copy)]
+        W1Bloon[(Bloon Table<br/>RAM Copy)]
+        W1Monkey[(Monkey Table<br/>RAM Copy)]
+        W1Dart[(Dart Table<br/>RAM Copy)]
+        W1Mnesia[Mnesia Process<br/>Worker 1]
+    end
+    
+    subgraph "Worker Node 2 - worker2@localhost"
+        W2Schema[(Schema<br/>RAM Copy)]
+        W2Bloon[(Bloon Table<br/>RAM Copy)]
+        W2Monkey[(Monkey Table<br/>RAM Copy)]
+        W2Dart[(Dart Table<br/>RAM Copy)]
+        W2Mnesia[Mnesia Process<br/>Worker 2]
+    end
+    
+    subgraph "Worker Node 3 - worker3@localhost"
+        W3Schema[(Schema<br/>RAM Copy)]
+        W3Bloon[(Bloon Table<br/>RAM Copy)]
+        W3Monkey[(Monkey Table<br/>RAM Copy)]
+        W3Dart[(Dart Table<br/>RAM Copy)]
+        W3Mnesia[Mnesia Process<br/>Worker 3]
+    end
+    
+    subgraph "Worker Node 4 - worker4@localhost"
+        W4Schema[(Schema<br/>RAM Copy)]
+        W4Bloon[(Bloon Table<br/>RAM Copy)]
+        W4Monkey[(Monkey Table<br/>RAM Copy)]
+        W4Dart[(Dart Table<br/>RAM Copy)]
+        W4Mnesia[Mnesia Process<br/>Worker 4]
+    end
+    
+    %% Schema Distribution
+    MainSchema -.->|Replicate Schema| W1Schema
+    MainSchema -.->|Replicate Schema| W2Schema
+    MainSchema -.->|Replicate Schema| W3Schema
+    MainSchema -.->|Replicate Schema| W4Schema
+    
+    %% Table Replication (Disc to RAM)
+    MainBloon -.->|Real-time Sync| W1Bloon
+    MainBloon -.->|Real-time Sync| W2Bloon
+    MainBloon -.->|Real-time Sync| W3Bloon
+    MainBloon -.->|Real-time Sync| W4Bloon
+    
+    MainMonkey -.->|Real-time Sync| W1Monkey
+    MainMonkey -.->|Real-time Sync| W2Monkey
+    MainMonkey -.->|Real-time Sync| W3Monkey
+    MainMonkey -.->|Real-time Sync| W4Monkey
+    
+    MainDart -.->|Real-time Sync| W1Dart
+    MainDart -.->|Real-time Sync| W2Dart
+    MainDart -.->|Real-time Sync| W3Dart
+    MainDart -.->|Real-time Sync| W4Dart
+    
+    %% Write Operations (Workers to Main)
+    W1Mnesia -->|Write Operations| MainMnesia
+    W2Mnesia -->|Write Operations| MainMnesia
+    W3Mnesia -->|Write Operations| MainMnesia
+    W4Mnesia -->|Write Operations| MainMnesia
+    
+    %% Transaction Coordination
+    MainMnesia -->|Transaction Commit| W1Mnesia
+    MainMnesia -->|Transaction Commit| W2Mnesia
+    MainMnesia -->|Transaction Commit| W3Mnesia
+    MainMnesia -->|Transaction Commit| W4Mnesia
+```
+
+## 8. Mnesia Table Structures & Records
+
+```mermaid
+erDiagram
+    BLOON {
+        atom id PK "Unique bloon identifier"
+        integer health "Current health points"
+        integer index "Position on path (0-N)"
+        tuple pos "Coordinates {X, Y}"
+        integer region_id "Owner region (0-3)"
+    }
+    
+    MONKEY {
+        atom id PK "Unique monkey identifier"
+        atom type "ground|water|fire|air|avatar"
+        tuple pos "Coordinates {X, Y}"
+        integer range "Attack range in pixels"
+        integer region_id "Owner region (0-3)"
+    }
+    
+    DART {
+        atom id PK "Unique dart identifier"
+        atom type "ground|water|fire|air|avatar"
+        tuple pos "Coordinates {X, Y}"
+        atom target_id FK "Target bloon ID"
+        integer region_id "Owner region (0-3)"
+    }
+    
+    BLOON ||--o{ DART : "targeted_by"
+    MONKEY ||--o{ DART : "shoots"
+```
+
+## 9. Mnesia Transaction Flow & ACID Properties
+
+```mermaid
+flowchart TD
+    subgraph "Transaction Lifecycle"
+        Start[Transaction Start] --> Lock[Acquire Locks]
+        Lock --> Read[Read Operations]
+        Read --> Write[Write Operations]
+        Write --> Validate[Validate Consistency]
+        Validate --> Commit[Two-Phase Commit]
+        Commit --> Release[Release Locks]
+        Release --> Complete[Transaction Complete]
+        
+        Validate -->|Conflict| Abort[Abort Transaction]
+        Abort --> Rollback[Rollback Changes]
+        Rollback --> Release
+    end
+    
+    subgraph "ACID Properties Implementation"
+        A[Atomicity<br/>All-or-nothing commits<br/>Automatic rollback on failure]
+        C[Consistency<br/>Schema validation<br/>Foreign key constraints]
+        I[Isolation<br/>Lock-based concurrency<br/>Snapshot isolation]
+        D[Durability<br/>Disc copies on main node<br/>Write-ahead logging]
+    end
+    
+    subgraph "Distribution Strategy"
+        MainDisc[Main Node<br/>Disc Copies<br/>Persistent Storage]
+        WorkerRAM[Worker Nodes<br/>RAM Copies<br/>Fast Read Access]
+        
+        MainDisc -->|Replicate| WorkerRAM
+        WorkerRAM -->|Write Through| MainDisc
+    end
+```
+
+## 10. Database Operations & Performance
+
+| **Operation** | **Table** | **Type** | **Frequency** | **Performance** | **Node Distribution** |
+|---------------|-----------|----------|---------------|-----------------|----------------------|
+| **write_bloon** | bloon | INSERT/UPDATE | High (per bloon move) | 1-2ms | All nodes (disc+RAM) |
+| **delete_bloon** | bloon | DELETE | Medium (on death) | 1ms | All nodes (disc+RAM) |
+| **write_monkey** | monkey | INSERT | Low (on placement) | 1ms | All nodes (disc+RAM) |
+| **write_dart** | dart | INSERT | High (per shot) | 1-2ms | All nodes (disc+RAM) |
+| **delete_dart** | dart | DELETE | High (on hit/miss) | 1ms | All nodes (disc+RAM) |
+| **get_all_bloons** | bloon | SELECT ALL | 30 FPS (GUI) | 2-5ms | Local RAM (fast) |
+| **get_all_darts** | dart | SELECT ALL | 30 FPS (GUI) | 2-5ms | Local RAM (fast) |
+| **find_bloon_query** | bloon | SELECT WHERE | 300ms (targeting) | 1-3ms | Local RAM (fast) |
+| **db_clear** | ALL | TRUNCATE | On restart | 10-50ms | Main node (disc) |
+
+## 11. Mnesia Clustering & Fault Tolerance
+
+```mermaid
+flowchart LR
+    subgraph "Normal Operation"
+        MainActive[Main Node<br/>ACTIVE<br/>Disc Storage]
+        W1Active[Worker 1<br/>ACTIVE<br/>RAM Copy]
+        W2Active[Worker 2<br/>ACTIVE<br/>RAM Copy]
+        W3Active[Worker 3<br/>ACTIVE<br/>RAM Copy]
+        W4Active[Worker 4<br/>ACTIVE<br/>RAM Copy]
+        
+        MainActive -.->|Sync| W1Active
+        MainActive -.->|Sync| W2Active
+        MainActive -.->|Sync| W3Active
+        MainActive -.->|Sync| W4Active
+    end
+    
+    subgraph "Failure Scenarios"
+        MainDown[Main Node<br/>DOWN<br/>Data Loss Risk]
+        W1Down[Worker 1<br/>DOWN<br/>No Impact]
+        W2Running[Worker 2<br/>RUNNING<br/>Cached Data]
+        W3Running[Worker 3<br/>RUNNING<br/>Cached Data]
+        W4Running[Worker 4<br/>RUNNING<br/>Cached Data]
+        
+        MainDown -.->|No Sync| W2Running
+        MainDown -.->|No Sync| W3Running
+        MainDown -.->|No Sync| W4Running
+    end
+    
+    subgraph "Recovery Strategy"
+        Restart[Restart Game<br/>Fresh Database]
+        ClearTables[db_clear Operation<br/>Reset All Tables]
+        Respawn[Respawn All Objects<br/>Clean State]
+        
+        Restart --> ClearTables
+        ClearTables --> Respawn
+    end
+```
+
+## 12. Database Access Patterns by Component
+
+```mermaid
+flowchart TD
+    subgraph "Database Access Patterns"
+        
+        subgraph "Monkey FSM Access"
+            MonkeyFSM[Monkey FSM] -->|write_monkey on spawn| MonkeyWrite[Monkey Table]
+            MonkeyFSM -->|delete_monkey on death| MonkeyDelete[Monkey Table]
+        end
+        
+        subgraph "Bloon FSM Access"
+            BloonFSM[Bloon FSM] -->|write_bloon on move| BloonWrite[Bloon Table]
+            BloonFSM -->|write_bloon on damage| BloonUpdate[Bloon Table]
+            BloonFSM -->|delete_bloon on death| BloonDelete[Bloon Table]
+        end
+        
+        subgraph "Arrow FSM Access"
+            ArrowFSM[Arrow FSM] -->|write_dart on spawn| DartWrite[Dart Table]
+            ArrowFSM -->|write_dart on move| DartUpdate[Dart Table]
+            ArrowFSM -->|delete_dart on hit| DartDelete[Dart Table]
+        end
+        
+        subgraph "Region Server Access"
+            RegionServer[Region Server] -->|get_bloons_in_regions| BloonQuery[Bloon Table Query]
+            RegionServer -->|find_bloon targeting| BloonSearch[Bloon Table Search]
+        end
+        
+        subgraph "Main Server Access"
+            MainServer[Main Server] -->|get_all_bloons for GUI| BloonRead[Bloon Table Read]
+            MainServer -->|get_all_darts for GUI| DartRead[Dart Table Read]
+            MainServer -->|db_clear on restart| DBClear[All Tables Clear]
+        end
+        
+        subgraph "GUI Access"
+            GUI[GUI Server] -->|Receives batch updates| GUIUpdate[No Direct DB Access]
+        end
+    end
+```
+
+**Storage Distribution:** Main node = Persistent disc storage | Worker nodes = Fast RAM cache  
+**Consistency Model:** Strong consistency with 2-phase commit | Real-time replication  
+**Performance:** 1-5ms operations | 30 FPS GUI updates | Cross-node query support
