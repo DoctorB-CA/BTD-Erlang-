@@ -6,7 +6,7 @@ Course: Functional Programming in Concurrent and Distributed Systems using Erlan
 Lecturer: Dr. Yehuda Ben-Shimol
 Teaching Assistant: Mr. Guy Perets
 
-Link to youtube:[Running the Project](https://youtu.be/KqVm-TpPlqs)   
+Link to youtube: [Running the Project](https://youtu.be/KqVm-TpPlqs)   
 Link to presentation: [BTD-Erlang PowerPoint Presentation](./documentation/PowerPoint-BTD.pptx)  
 Link to documentation: [BTD-Erlang Project Documentation](./documentation/BTD_Erlang_Project_Documentation.md)
 
