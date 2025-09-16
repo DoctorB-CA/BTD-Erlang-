@@ -94,6 +94,10 @@ handle_cast(restart_game, State = #state{region_pids = RegionPids}) ->
     io:format("*DEBUG* Restarting game - clearing all database tables~n"),
     db:db_clear(),
     
+    % Stop all existing timers first
+    io:format("*DEBUG* Stopping all existing timers~n"),
+    timer:kill_after(0),  % Cancel any pending timer messages
+    
     % Notify all region servers to clean up their processes
     io:format("*DEBUG* Notifying all regions to clean up processes~n"),
     lists:foreach(fun(RegionPid) ->
@@ -106,8 +110,19 @@ handle_cast(restart_game, State = #state{region_pids = RegionPids}) ->
         end
     end, RegionPids),
     
-    % Give regions time to complete cleanup before allowing new operations
-    timer:sleep(500),
+    % Give regions more time to complete cleanup
+    timer:sleep(1000),
+    
+    % Clear any lingering global registrations for balloons
+    io:format("*DEBUG* Cleaning up global registrations~n"),
+    cleanup_global_balloons(),
+    
+    % Clear any remaining messages in our mailbox
+    flush_mailbox(),
+    
+    % Restart the GUI update timer after cleanup
+    io:format("*DEBUG* Restarting GUI update timer~n"),
+    timer:send_interval(33, self(), update_gui_balloons),
     
     % Reset bananas when game restarts
     NewBananas = 1000,
@@ -267,4 +282,41 @@ get_monkey_cost(fire_monkey) -> ?FIRE_MONKEY_COST;
 get_monkey_cost(air_monkey) -> ?AIR_MONKEY_COST;
 get_monkey_cost(avatar_monkey) -> ?AVATAR_MONKEY_COST;
 get_monkey_cost(_) -> 0.  % Unknown monkey type costs nothing
+
+%% --- Cleanup helper functions for restart ---
+cleanup_global_balloons() ->
+    % Get all globally registered names and unregister balloon processes
+    GlobalNames = global:registered_names(),
+    lists:foreach(fun(Name) ->
+        case global:whereis_name(Name) of
+            Pid when is_pid(Pid) ->
+                % Check if this looks like a balloon process
+                try
+                    Info = process_info(Pid, [initial_call, current_function]),
+                    case Info of
+                        [{initial_call, {bloon, _, _}}, _] ->
+                            io:format("*DEBUG* Unregistering global balloon ~p~n", [Name]),
+                            global:unregister_name(Name),
+                            exit(Pid, restart_cleanup);
+                        _ ->
+                            ok
+                    end
+                catch
+                    _:_ -> ok  % Process might already be dead
+                end;
+            undefined ->
+                ok
+        end
+    end, GlobalNames).
+
+flush_mailbox() ->
+    receive
+        update_gui_balloons ->
+            io:format("*DEBUG* Flushed old GUI update message~n"),
+            flush_mailbox();
+        _ ->
+            flush_mailbox()
+    after 0 ->
+        ok
+    end.
 

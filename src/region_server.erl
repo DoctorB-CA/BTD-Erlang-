@@ -113,29 +113,29 @@ handle_cast(restart_cleanup, State = #region_state{id = RegionId}) ->
     io:format("*DEBUG* Region ~p: Received restart_cleanup - terminating all processes~n", [RegionId]),
     
     try
-        % Kill all globally registered balloons
-        io:format("*DEBUG* Region ~p: Killing globally registered balloons~n", [RegionId]),
+        % Kill all globally registered balloons from ALL nodes
+        io:format("*DEBUG* Region ~p: Cleaning up globally registered balloons~n", [RegionId]),
         GlobalNames = global:registered_names(),
-        BalloonPids = lists:filtermap(fun(Name) ->
+        GlobalKillCount = lists:foldl(fun(Name, Count) ->
             case global:whereis_name(Name) of
                 Pid when is_pid(Pid) ->
-                    % Check if this process is on our node and looks like a balloon
-                    case node(Pid) =:= node() of
-                        true -> {true, Pid};
-                        false -> false
+                    % Check if this looks like a balloon process by its registration name
+                    case is_reference(Name) of  % Balloon IDs are references
+                        true ->
+                            try
+                                io:format("*DEBUG* Region ~p: Killing global balloon ~p on node ~p~n", 
+                                         [RegionId, Name, node(Pid)]),
+                                global:unregister_name(Name),
+                                exit(Pid, restart_cleanup),
+                                Count + 1
+                            catch
+                                _:_ -> Count % Ignore errors if process already dead
+                            end;
+                        false -> Count
                     end;
-                undefined -> false
+                undefined -> Count
             end
-        end, GlobalNames),
-        
-        lists:foreach(fun(Pid) ->
-            try
-                io:format("*DEBUG* Region ~p: Killing process ~p~n", [RegionId, Pid]),
-                exit(Pid, kill)
-            catch
-                _:_ -> ok % Ignore errors if process already dead
-            end
-        end, BalloonPids),
+        end, 0, GlobalNames),
         
         % Kill all locally registered processes (monkeys, darts, etc.)
         io:format("*DEBUG* Region ~p: Killing locally registered processes~n", [RegionId]),
@@ -155,14 +155,15 @@ handle_cast(restart_cleanup, State = #region_state{id = RegionId}) ->
             end
         end, LocalNames),
         
-        lists:foreach(fun(Pid) ->
+        LocalKillCount = lists:foldl(fun(Pid, Count) ->
             try
                 io:format("*DEBUG* Region ~p: Killing local process ~p~n", [RegionId, Pid]),
-                exit(Pid, kill)
+                exit(Pid, kill),
+                Count + 1
             catch
-                _:_ -> ok % Ignore errors if process already dead
+                _:_ -> Count % Ignore errors if process already dead
             end
-        end, LocalPids),
+        end, 0, LocalPids),
         
         % Additional selective cleanup: find all processes running bloon or monkey modules
         io:format("*DEBUG* Region ~p: Performing selective cleanup of bloon/monkey processes~n", [RegionId]),
@@ -208,7 +209,7 @@ handle_cast(restart_cleanup, State = #region_state{id = RegionId}) ->
         end, AllPids),
         
         io:format("*DEBUG* Region ~p: Cleanup completed - killed ~p global and ~p local processes~n", 
-                 [RegionId, length(BalloonPids), length(LocalPids)])
+                 [RegionId, GlobalKillCount, LocalKillCount])
     catch
         Error:Reason ->
             io:format("*ERROR* Region ~p: Error during cleanup: ~p:~p~n", [RegionId, Error, Reason])
