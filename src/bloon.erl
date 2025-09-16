@@ -3,7 +3,7 @@
 
 -include("dbr.hrl").
 
--export([start_link/3, start_link_migration/6, get_pos/1]).
+-export([start_link/3, start_link_migration/6, get_pos/1,right/2,left/2,up/2,down/2]).
 -export([init/1, callback_mode/0, terminate/3, moving/3]).
 
 -define(MOVE_INTERVAL, 50). % Move every 50ms - fast movement for 60 FPS GUI
