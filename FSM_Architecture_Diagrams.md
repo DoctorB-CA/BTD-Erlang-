@@ -1,5 +1,13 @@
 # FSM Architecture Diagrams - BTD-Erlang Game Objects
 
+> **Note:** To view these diagrams as images instead of code, paste the mermaid code into:
+> - [Mermaid Live Editor](https://mermaid.live) 
+> - GitHub (when viewing .md files)
+> - VS Code with Mermaid extension
+> - Or any Mermaid-compatible viewer
+
+---
+
 ## 1. Monkey FSM Architecture
 
 ```mermaid
@@ -202,13 +210,15 @@ stateDiagram-v2
     
     state processing_call {
         direction LR
-        queries --> find_bloon : {find_bloon, Pos, Range}
+        queries --> find_bloon : find_bloon request
         queries --> ping : Health check
         
         find_bloon --> db_scan : Query multiple regions
         db_scan --> distance_calc : Find closest in range
-        distance_calc --> [*] : {ok, BloonId} | {error, not_found}
-        ping --> [*] : Return self()
+        distance_calc --> result : Return BloonId or not_found
+        ping --> pong : Return self
+        result --> [*] : Complete
+        pong --> [*] : Complete
     }
     
     state processing_cast {
@@ -221,12 +231,19 @@ stateDiagram-v2
         game_events --> balloon_destroyed : banana rewards
         game_events --> restart_cleanup : Process cleanup
         
-        spawn_monkey --> [*] : monkey:start_link
-        spawn_bloon --> [*] : bloon:start_link  
-        spawn_migration --> [*] : Cross-node spawning
-        balloon_end --> [*] : Notify main_server
-        balloon_destroyed --> [*] : Forward to main_server
-        restart_cleanup --> [*] : Kill game processes
+        spawn_monkey --> monkey_created : monkey start_link
+        spawn_bloon --> bloon_created : bloon start_link  
+        spawn_migration --> migration_done : Cross-node spawning
+        balloon_end --> notified : Notify main_server
+        balloon_destroyed --> forwarded : Forward to main_server
+        restart_cleanup --> cleaned : Kill game processes
+        
+        monkey_created --> [*] : Complete
+        bloon_created --> [*] : Complete
+        migration_done --> [*] : Complete
+        notified --> [*] : Complete
+        forwarded --> [*] : Complete
+        cleaned --> [*] : Complete
     }
 ```
 
