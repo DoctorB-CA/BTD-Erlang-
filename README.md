@@ -8,6 +8,7 @@ Teaching Assistant: Mr. Guy Perets
 
 Link to youtube: --link <no exist yet>--  
 Link to presentation: [BTD-Erlang PowerPoint Presentation](./documentation/PowerPoint-BTD.pptx)  
+Link to PDF documentation: [BTD-Erlang Project Documentation (PDF)](./documentation/BTD_Erlang_Project_Documentation.pdf)
 
 How to run this project: [Project Setup & Run Instructions](./how%20to%20run%20this%20project.txt)
 ## Main Architecture Diagram
