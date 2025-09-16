@@ -1,6 +1,18 @@
 # FSM Architecture Diagrams - BTD-Erlang Game Objects
 
+## How to View/Copy the Diagrams
+
+**To render these diagrams:**
+1. Copy the mermaid code blocks below
+2. Paste them into [Mermaid Live Editor](https://mermaid.live/)
+3. Or use GitHub/GitLab markdown preview
+4. Or use VS Code with Mermaid extension
+
+---
+
 ## 1. Monkey FSM Architecture
+
+**Copy this Monkey FSM code block:**
 
 ```mermaid
 stateDiagram-v2
@@ -40,6 +52,10 @@ stateDiagram-v2
     end note
 ```
 
+**End of Monkey FSM Code** - Copy everything from the ```mermaid line above to this closing ``` line.
+
+---
+
 ### Monkey FSM Details
 
 **States:**
@@ -60,6 +76,8 @@ stateDiagram-v2
 ---
 
 ## 2. Bloon (Balloon) FSM Architecture
+
+**Copy this Bloon FSM code block:**
 
 ```mermaid
 stateDiagram-v2
@@ -126,6 +144,10 @@ stateDiagram-v2
     end note
 ```
 
+**End of Bloon FSM Code** - Copy everything from the ```mermaid line above to this closing ``` line.
+
+---
+
 ### Bloon FSM Details
 
 **States:**
@@ -146,6 +168,8 @@ stateDiagram-v2
 ---
 
 ## 3. Arrow (Dart) FSM Architecture
+
+**Copy this Arrow FSM code block:**
 
 ```mermaid
 stateDiagram-v2
@@ -189,6 +213,10 @@ stateDiagram-v2
     end note
 ```
 
+**End of Arrow FSM Code** - Copy everything from the ```mermaid line above to this closing ``` line.
+
+---
+
 ### Arrow FSM Details
 
 **States:**
@@ -208,6 +236,8 @@ stateDiagram-v2
 ---
 
 ## FSM Communication Patterns
+
+**Copy this Sequence Diagram code block:**
 
 ```mermaid
 sequenceDiagram
@@ -250,7 +280,23 @@ sequenceDiagram
     end
 ```
 
-## Performance Characteristics
+**End of Sequence Diagram Code** - Copy everything from the ```mermaid line above to this closing ``` line.
+
+---
+
+## Quick Copy Links
+
+**🔗 Quick Access Links:**
+- [Mermaid Live Editor](https://mermaid.live/) - Paste any diagram code here
+- [Mermaid Documentation](https://mermaid-js.github.io/mermaid/)
+- [VS Code Mermaid Extension](https://marketplace.visualstudio.com/items?itemName=bierner.markdown-mermaid)
+
+**📋 Copy Instructions:**
+1. Select from `\`\`\`mermaid` to the closing `\`\`\``
+2. Copy the entire code block
+3. Paste into Mermaid Live Editor or your preferred renderer
+
+---
 
 | FSM Type | State Duration | Update Frequency | DB Operations |
 |----------|---------------|------------------|---------------|

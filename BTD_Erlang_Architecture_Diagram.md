@@ -1,5 +1,39 @@
 # BTD-Erlang Distributed Game Architecture
 
+## How to View/Copy the Diagrams
+
+**To render these diagrams:**
+1. Copy the mermaid code blocks below
+2. Paste them into [Mermaid Live Editor](https://mermaid.live/)
+3. Or use GitHub/GitLab    A -.->|Damage| B
+    B -.->|Migration| B
+```
+
+**End of Simplified Diagram Code** - Copy everything from the ```mermaid line above to this closing ``` line.
+
+---
+
+## Quick Copy Links
+
+**🔗 Quick Access Links:**
+- [Mermaid Live Editor](https://mermaid.live/) - Paste any diagram code here
+- [Mermaid Documentation](https://mermaid-js.github.io/mermaid/)
+- [VS Code Mermaid Extension](https://marketplace.visualstudio.com/items?itemName=bierner.markdown-mermaid)
+
+**📋 Copy Instructions:**
+1. Select from ````mermaid` to the closing `````
+2. Copy the entire code block
+3. Paste into Mermaid Live Editor or your preferred renderer
+
+---
+
+## Key Architecture Componentsmarkdown preview
+4. Or use VS Code with Mermaid extension
+
+## Main Architecture Diagram
+
+**Copy this code block:**
+
 ```mermaid
 graph TB
     %% ===== PHYSICAL ARCHITECTURE =====
@@ -168,7 +202,61 @@ graph TB
     class GlobalReg service
 ```
 
-## Key Architecture Components
+**End of Mermaid Code** - Copy everything from the ```mermaid line above to this closing ``` line.
+
+---
+
+## Alternative: Simplified Network View
+
+**Copy this code block for a simpler network-focused diagram:**
+
+```mermaid
+graph TB
+    subgraph "🖥️ Main Node"
+        MS[Main Server<br/>📊 Economics & Coordination]
+        GUI[GUI<br/>🎮 Player Interface]
+        DB[(Database<br/>💾 Disc Storage)]
+    end
+    
+    subgraph "⚡ Worker Nodes"
+        W1[Worker 1<br/>🌍 Region 0<br/>X: 0-199]
+        W2[Worker 2<br/>🌍 Region 1<br/>X: 200-399]
+        W3[Worker 3<br/>🌍 Region 2<br/>X: 400-599]
+        W4[Worker 4<br/>🌍 Region 3<br/>X: 600-799]
+    end
+    
+    subgraph "🎯 Game Objects"
+        B[🎈 Balloons<br/>Move & Migrate]
+        M[🐒 Monkeys<br/>Attack & Defend]
+        A[🏹 Arrows<br/>Seek & Destroy]
+    end
+    
+    MS -.->|Spawn Commands| W1
+    MS -.->|Spawn Commands| W2
+    MS -.->|Spawn Commands| W3
+    MS -.->|Spawn Commands| W4
+    
+    W1 -.->|Game Events| MS
+    W2 -.->|Game Events| MS
+    W3 -.->|Game Events| MS
+    W4 -.->|Game Events| MS
+    
+    W1 --> B
+    W2 --> B
+    W3 --> B
+    W4 --> B
+    
+    W1 --> M
+    W2 --> M
+    W3 --> M
+    W4 --> M
+    
+    M --> A
+    A -.->|Damage| B
+    B -.->|Migration| B
+```
+
+---
 
 ### 1. **Supervision Tree**
 - **Main Supervisor**: Supervises the main server
