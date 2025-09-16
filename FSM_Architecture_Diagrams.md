@@ -1,314 +1,351 @@
 # FSM Architecture Diagrams - BTD-Erlang Game Objects
 
-## How to View/Copy the Diagrams
-
-**To render these diagrams:**
-1. Copy the mermaid code blocks below
-2. Paste them into [Mermaid Live Editor](https://mermaid.live/)
-3. Or use GitHub/GitLab markdown preview
-4. Or use VS Code with Mermaid extension
-
----
-
 ## 1. Monkey FSM Architecture
-
-**Copy this Monkey FSM code block:**
 
 ```mermaid
 stateDiagram-v2
-    [*] --> searching : start_link/5<br/>Init monkey data<br/>Write to DB<br/>Set scan timeout
+    direction LR
+    [*] --> searching
+    searching --> attacking : Target found<br/>Fire arrow
+    attacking --> searching : Cooldown complete
     
     state searching {
-        [*] --> scanning : state_timeout(0, scan)
-        scanning --> found_target : find_bloon returns {ok, BloonId}
-        scanning --> no_target : find_bloon returns {error, not_found}
-        no_target --> scanning : state_timeout(300ms, scan)
-        found_target --> [*] : fire_arrow()<br/>spawn arrow FSM
+        direction LR
+        scan --> found : find_bloon {ok, BloonId}
+        scan --> no_target : find_bloon {error, not_found}
+        found --> fire_arrow : spawn arrow FSM
+        no_target --> scan : 300ms timeout
+        fire_arrow --> [*]
     }
-    
-    searching --> attacking : Target found<br/>Arrow fired
     
     state attacking {
-        [*] --> cooling_down : ATTACK_COOLDOWN(800ms)
-        cooling_down --> [*] : cooldown_over
+        direction LR
+        cooldown --> ready : 800ms timeout
+        ready --> [*]
     }
-    
-    attacking --> searching : Cooldown complete<br/>Resume scanning
-    
-    note right of searching
-        **Scanning Process:**
-        - Call region_server:find_bloon()
-        - Check range (distance calculation)
-        - Return closest bloon within range
-        - Scan interval: 300ms
-    end note
-    
-    note right of attacking
-        **Attack Process:**
-        - Determine dart type from monkey type
-        - Avatar monkey: random dart type
-        - Spawn arrow:start_link()
-        - Cooldown: 800ms
-    end note
 ```
 
-**End of Monkey FSM Code** - Copy everything from the ```mermaid line above to this closing ``` line.
-
----
-
-### Monkey FSM Details
-
-**States:**
-- **searching**: Default state, continuously scans for targets
-- **attacking**: Cooldown period after firing an arrow
-
-**Data Structure:**
-```erlang
--record(data, {type, pos, range, region_pid}).
-```
-
-**Key Features:**
-- **Target Acquisition**: Uses region server to find bloons in range
-- **Dart Type Mapping**: Different monkey types shoot different darts
-- **Avatar Special**: Shoots random dart types
-- **Performance**: 300ms scan interval, 800ms attack cooldown
+**Monkey Data:** `{type, pos, range, region_pid}` | **Scan:** 300ms | **Cooldown:** 800ms
 
 ---
 
 ## 2. Bloon (Balloon) FSM Architecture
 
-**Copy this Bloon FSM code block:**
-
 ```mermaid
 stateDiagram-v2
-    [*] --> init_check : start_link/3 or<br/>start_link_migration/6
-    
-    state init_check {
-        [*] --> new_bloon : start_link (new)
-        [*] --> migrated_bloon : start_link_migration
-        new_bloon --> [*] : Create path<br/>Set start position<br/>Write to DB
-        migrated_bloon --> [*] : Update position<br/>Recalc region<br/>Write to DB
-    }
-    
-    init_check --> moving : Init complete<br/>Set move timeout
+    direction LR
+    [*] --> moving
+    moving --> hit_check : {hit, Damage}
+    hit_check --> moving : Health > 0
+    hit_check --> [*] : Health ≤ 0<br/>Send banana reward
+    moving --> [*] : End of path<br/>Game over
     
     state moving {
-        [*] --> path_check : state_timeout(50ms, move)
-        path_check --> end_reached : NextPos == undefined
-        path_check --> continue_moving : NextPos valid
-        
-        continue_moving --> region_check : Update position<br/>Write to DB
-        region_check --> same_region : No region change
-        region_check --> migrate_needed : Cross region boundary
-        
-        same_region --> [*] : Continue in region<br/>Set next timeout
-        migrate_needed --> spawn_migration : Cross-node migration
-        migrate_needed --> local_region : Same-node migration
-        
-        spawn_migration --> [*] : Spawn on new node<br/>Terminate this process
-        local_region --> [*] : Update region<br/>Continue moving
-        
-        end_reached --> [*] : Notify region<br/>Game over signal
+        direction LR
+        move_tick --> path_check : 50ms interval
+        path_check --> end_path : NextPos undefined
+        path_check --> region_check : NextPos valid
+        region_check --> same_region : No boundary cross
+        region_check --> migrate : Cross region boundary
+        same_region --> move_tick : Update position
+        migrate --> spawn_new : Cross-node migration
+        migrate --> local_update : Same-node migration
+        spawn_new --> [*] : Terminate this process
+        local_update --> move_tick : Update region
+        end_path --> [*] : Notify game over
     }
     
-    moving --> hit_processing : cast/info {hit, Damage}
-    
-    state hit_processing {
-        [*] --> damage_calc : Reduce health<br/>Update DB
-        damage_calc --> destroyed : Health <= 0
-        damage_calc --> continue : Health > 0
-        destroyed --> [*] : Send banana reward<br/>Delete from DB
-        continue --> [*] : Return to moving
+    state hit_check {
+        direction LR
+        damage --> survive : Health > 0
+        damage --> die : Health ≤ 0
+        survive --> [*]
+        die --> [*]
     }
-    
-    hit_processing --> moving : Health > 0
-    hit_processing --> [*] : Health <= 0<br/>Balloon destroyed
-    
-    moving --> [*] : End of path reached<br/>Game over
-    
-    note right of moving
-        **Movement System:**
-        - 50ms intervals (20 FPS)
-        - Path index increments
-        - Region boundaries at 200px
-        - Cross-node migration support
-        - Path ends at {799, 600}
-    end note
-    
-    note right of hit_processing
-        **Combat System:**
-        - Accept hit from arrows
-        - Health reduction
-        - Banana reward calculation
-        - Database cleanup on death
-    end note
 ```
 
-**End of Bloon FSM Code** - Copy everything from the ```mermaid line above to this closing ``` line.
-
----
-
-### Bloon FSM Details
-
-**States:**
-- **moving**: Primary state, handles movement and migration
-- **hit_processing**: Temporary state for damage calculation
-
-**Data Structure:**
-```erlang
--record(state, {id, index, health, pos, current_region_pid, region_pids, region_id}).
-```
-
-**Key Features:**
-- **Path Movement**: Follows predefined path with 50ms intervals
-- **Cross-Node Migration**: Seamless migration between worker nodes
-- **Health System**: Takes damage, awards bananas on destruction
-- **Global Registration**: Discoverable across distributed system
+**Bloon Data:** `{id, index, health, pos, current_region_pid, region_pids, region_id}` | **Move:** 50ms | **Migration:** Cross-node support
 
 ---
 
 ## 3. Arrow (Dart) FSM Architecture
 
-**Copy this Arrow FSM code block:**
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> flying
+    flying --> [*] : Hit target OR Out of range OR Target lost
+    
+    state flying {
+        direction LR
+        move_tick --> range_check : 50ms interval
+        range_check --> out_of_range : steps_left ≤ 0
+        range_check --> target_check : steps_left > 0
+        target_check --> target_lost : No target position
+        target_check --> calculate : Target found
+        calculate --> hit_check : Move toward target
+        hit_check --> hit_target : Distance ≤ 20px
+        hit_check --> continue : Distance > 20px
+        hit_target --> [*] : Send damage to bloon
+        continue --> move_tick : Decrement steps
+        target_lost --> [*] : Clean up
+        out_of_range --> [*] : Clean up
+    }
+```
+
+**Arrow Data:** `{id, type, pos, target_id, region_id, steps_left}` | **Speed:** 10px/tick | **Range:** 300px | **Hit:** 20px threshold
+
+---
+
+# Gen_Server Architecture Diagrams
+
+## 4. GUI Gen_Server Architecture
 
 ```mermaid
 stateDiagram-v2
-    [*] --> flying : start_link/4<br/>Create dart record<br/>Write to DB<br/>Set max range
+    direction LR
+    [*] --> idle
+    idle --> processing_cast : handle_cast
+    idle --> processing_call : handle_call
+    idle --> processing_event : handle_info (wx events)
     
-    state flying {
-        [*] --> range_check : state_timeout(0, move)
-        range_check --> out_of_range : steps_left <= 0
-        range_check --> target_check : steps_left > 0
+    processing_cast --> idle : Game state updates
+    processing_call --> idle : Synchronous requests
+    processing_event --> idle : User interactions
+    
+    state processing_cast {
+        direction LR
+        game_updates --> monkey_ops : add/delete/move monkey
+        game_updates --> balloon_ops : add/delete/move balloon  
+        game_updates --> dart_ops : add/delete/move dart
+        game_updates --> ui_updates : change_bananas, refresh
+        game_updates --> game_events : lose_game, clear_board
+        game_updates --> batch_updates : update_balloons/darts
         
-        target_check --> target_lost : get_target_position fails
-        target_check --> calculate_movement : Target position found
-        
-        calculate_movement --> hit_check : Move toward target<br/>Update DB position
-        hit_check --> hit_target : Distance <= HIT_THRESHOLD(20px)
-        hit_check --> continue_flying : Distance > HIT_THRESHOLD
-        
-        hit_target --> [*] : Send damage to bloon<br/>Delete from DB
-        continue_flying --> [*] : Decrement steps<br/>Set next timeout
-        target_lost --> [*] : Delete from DB
-        out_of_range --> [*] : Delete from DB
+        monkey_ops --> [*] : Update monkey map
+        balloon_ops --> [*] : Update balloon map
+        dart_ops --> [*] : Update dart map
+        ui_updates --> [*] : Update widgets
+        game_events --> [*] : Show dialogs
+        batch_updates --> [*] : Refresh display
     }
     
-    flying --> [*] : Hit target OR<br/>Out of range OR<br/>Target lost
-    
-    note right of flying
-        **Flight System:**
-        - Speed: 10 pixels per tick
-        - Tick rate: 50ms
-        - Max range: 300 pixels
-        - Hit threshold: 20 pixels
-        - Vector calculation to target
-    end note
-    
-    note left of flying
-        **Targeting System:**
-        - Track target by BloonId
-        - Get position from database
-        - Calculate movement vector
-        - Handle target destruction
-    end note
+    state processing_event {
+        direction LR
+        wx_paint --> render : Draw all objects
+        wx_mouse --> place_monkey : Left click placement
+        wx_button --> button_action : Monkey selection/wave start
+        wx_erase --> clear_bg : Background clearing
+        
+        render --> [*] : Paint complete
+        place_monkey --> [*] : Send to main_server
+        button_action --> [*] : UI state change
+        clear_bg --> [*] : Prevent flicker
+    }
 ```
 
-**End of Arrow FSM Code** - Copy everything from the ```mermaid line above to this closing ``` line.
+**GUI State:** `{frame, board, bitmaps, monkeys, balloons, darts, placing, banana_text_widget, button_ids}` 
 
----
+**Key Operations:** Rendering (paint), User input (mouse/buttons), Game state display, wxErlang event handling
 
-### Arrow FSM Details
-
-**States:**
-- **flying**: Only state, handles movement and collision detection
-
-**Data Structure:**
-```erlang
--record(data, {id, type, pos, target_id, region_id, steps_left}).
-```
-
-**Key Features:**
-- **Projectile Physics**: Vector-based movement toward target
-- **Range Limitation**: Maximum 300 pixels (30 steps at 10px/step)
-- **Hit Detection**: 20 pixel threshold for collision
-- **Target Tracking**: Follows moving bloons using database lookups
-
----
-
-## FSM Communication Patterns
-
-**Copy this Sequence Diagram code block:**
+## 5. Main_Server Gen_Server Architecture
 
 ```mermaid
-sequenceDiagram
-    participant M as Monkey FSM
-    participant R as Region Server
-    participant B as Bloon FSM
-    participant A as Arrow FSM
-    participant DB as Mnesia DB
+stateDiagram-v2
+    direction LR
+    [*] --> ready
+    ready --> processing_cast : handle_cast
+    ready --> processing_call : handle_call  
+    ready --> processing_timer : handle_info (timers)
     
-    Note over M: Searching State
-    M->>R: find_bloon(pos, range)
-    R->>DB: get_bloons_in_regions()
-    DB-->>R: [BloonRecords]
-    R-->>M: {ok, BloonId}
+    processing_cast --> ready : Command processing
+    processing_call --> ready : Synchronous queries
+    processing_timer --> ready : Periodic updates
     
-    Note over M: Attack State
-    M->>A: arrow:start_link(type, pos, target)
-    A->>DB: write_dart(DartRecord)
-    
-    Note over A: Flying State
-    loop Every 50ms
-        A->>DB: get_target_position(BloonId)
-        DB-->>A: {ok, TargetPos}
-        A->>A: calculate_vector() & move_towards()
-        A->>DB: write_dart(UpdatedRecord)
+    state processing_cast {
+        direction LR
+        game_flow --> game_over_handler : game_over events
+        game_flow --> restart_handler : restart_game
+        game_flow --> spawn_commands : add_monkey/bloon
         
-        alt Hit Target
-            A->>B: gen_statem:cast({hit, Damage})
-            A->>DB: delete_dart(DartId)
-            Note over B: Hit Processing
-            B->>DB: write_bloon(UpdatedHealth)
-            alt Bloon Destroyed
-                B->>R: balloon_destroyed message
-                R->>Main: banana reward
-                B->>DB: delete_bloon(BloonId)
-            end
-        else Out of Range
-            A->>DB: delete_dart(DartId)
-        end
-    end
+        economy --> banana_rewards : balloon_destroyed
+        economy --> cost_validation : place_item
+        
+        game_over_handler --> [*] : Call GUI lose_game
+        restart_handler --> [*] : Clear DB, notify regions
+        spawn_commands --> [*] : Route to regions
+        banana_rewards --> [*] : Update banana count
+        cost_validation --> [*] : Check/deduct cost
+    }
+    
+    state processing_timer {
+        direction LR
+        gui_update --> db_query : Get all bloons/darts
+        db_query --> batch_send : Send to GUI
+        batch_send --> [*] : 33ms interval (30 FPS)
+    }
 ```
 
-**End of Sequence Diagram Code** - Copy everything from the ```mermaid line above to this closing ``` line.
+**Main_Server State:** `{region_pids, game_over, bananas}` | **Economy:** Banana costs/rewards | **Coordination:** Cross-region management
+
+## 6. Region_Server Gen_Server Architecture
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> managing
+    managing --> processing_call : handle_call
+    managing --> processing_cast : handle_cast
+    
+    processing_call --> managing : Queries
+    processing_cast --> managing : Commands
+    
+    state processing_call {
+        direction LR
+        queries --> find_bloon : {find_bloon, Pos, Range}
+        queries --> ping : Health check
+        
+        find_bloon --> db_scan : Query multiple regions
+        db_scan --> distance_calc : Find closest in range
+        distance_calc --> [*] : {ok, BloonId} | {error, not_found}
+        ping --> [*] : Return self()
+    }
+    
+    state processing_cast {
+        direction LR
+        spawning --> spawn_monkey : Create monkey FSM
+        spawning --> spawn_bloon : Create bloon FSM
+        spawning --> spawn_migration : Handle bloon migration
+        
+        game_events --> balloon_end : balloon_reached_end
+        game_events --> balloon_destroyed : banana rewards
+        game_events --> restart_cleanup : Process cleanup
+        
+        spawn_monkey --> [*] : monkey:start_link
+        spawn_bloon --> [*] : bloon:start_link  
+        spawn_migration --> [*] : Cross-node spawning
+        balloon_end --> [*] : Notify main_server
+        balloon_destroyed --> [*] : Forward to main_server
+        restart_cleanup --> [*] : Kill game processes
+    }
+```
+
+**Region_Server State:** `{id, total_regions}` | **Responsibilities:** Local game object management, Cross-region queries, Process spawning
 
 ---
 
-## Quick Copy Links
+## FSM Communication Overview
 
-**🔗 Quick Access Links:**
-- [Mermaid Live Editor](https://mermaid.live/) - Paste any diagram code here
-- [Mermaid Documentation](https://mermaid-js.github.io/mermaid/)
-- [VS Code Mermaid Extension](https://marketplace.visualstudio.com/items?itemName=bierner.markdown-mermaid)
+```mermaid
+flowchart LR
+    M[Monkey FSM] -->|find_bloon| R[Region Server]
+    R -->|{ok, BloonId}| M
+    M -->|spawn| A[Arrow FSM]
+    A -->|{hit, Damage}| B[Bloon FSM]
+    B -->|banana_reward| R
+    R -->|banana_reward| MS[Main Server]
+    MS -->|update| GUI[GUI]
+    
+    subgraph "Database"
+        DB[(Mnesia)]
+    end
+    
+    M -.->|write_monkey| DB
+    B -.->|write/delete_bloon| DB
+    A -.->|write/delete_dart| DB
+    R -.->|read queries| DB
+```
 
-**📋 Copy Instructions:**
-1. Select from `\`\`\`mermaid` to the closing `\`\`\``
-2. Copy the entire code block
-3. Paste into Mermaid Live Editor or your preferred renderer
+## Gen_Server Communication & Message Flow
 
----
+```mermaid
+flowchart LR
+    subgraph "User Interaction"
+        User[Player] -->|Click/Button| GUI
+    end
+    
+    subgraph "Main Node"
+        GUI[GUI Server] 
+        MS[Main Server]
+    end
+    
+    subgraph "Worker Nodes"
+        R1[Region 0]
+        R2[Region 1] 
+        R3[Region 2]
+        R4[Region 3]
+    end
+    
+    subgraph "Game Objects"
+        M[Monkey FSMs]
+        B[Bloon FSMs]
+        A[Arrow FSMs]
+    end
+    
+    %% User to GUI
+    GUI -->|place_item| MS
+    GUI <--|change_bananas| MS
+    GUI <--|lose_game| MS
+    
+    %% Main Server to Regions
+    MS -->|spawn_monkey/bloon| R1
+    MS -->|spawn_monkey/bloon| R2
+    MS -->|spawn_monkey/bloon| R3
+    MS -->|spawn_monkey/bloon| R4
+    MS -->|restart_cleanup| R1
+    MS -->|restart_cleanup| R2
+    MS -->|restart_cleanup| R3
+    MS -->|restart_cleanup| R4
+    
+    %% Regions to Main Server  
+    R1 -->|game_over/banana_reward| MS
+    R2 -->|game_over/banana_reward| MS
+    R3 -->|game_over/banana_reward| MS
+    R4 -->|game_over/banana_reward| MS
+    
+    %% Regions spawn Game Objects
+    R1 --> M
+    R1 --> B
+    R2 --> M
+    R2 --> B
+    R3 --> M
+    R3 --> B
+    R4 --> M
+    R4 --> B
+    
+    %% Game Object Interactions
+    M -->|find_bloon| R1
+    M -->|spawn arrow| A
+    A -->|hit damage| B
+    B -->|destruction reward| R1
+    
+    %% GUI Updates
+    MS -->|update_balloons/darts| GUI
+    MS -.->|33ms timer| MS
+```
 
-| FSM Type | State Duration | Update Frequency | DB Operations |
-|----------|---------------|------------------|---------------|
-| **Monkey** | searching: continuous<br/>attacking: 800ms | scan: 300ms<br/>attack: on target | write_monkey (init)<br/>No updates during operation |
-| **Bloon** | moving: continuous | movement: 50ms | write_bloon (every move)<br/>delete_bloon (on death) |
-| **Arrow** | flying: ~1.5s avg | movement: 50ms | write_dart (every move)<br/>delete_dart (on hit/expire) |
+## Message Types & Frequencies
 
-## Memory & Process Management
+| **Server** | **Message Type** | **Frequency** | **Source/Target** | **Purpose** |
+|------------|------------------|---------------|-------------------|-------------|
+| **GUI** | `{add_monkey, T,X,Y,I}` | On placement | User → GUI | Add monkey to display |
+| **GUI** | `{update_balloons, Map}` | 30 FPS | Main → GUI | Batch balloon updates |
+| **GUI** | `{change_bananas, Amount}` | On economy change | Main → GUI | Update banana display |
+| **GUI** | `#wx{event=#wxPaint{}}` | On refresh | wxErlang → GUI | Redraw game board |
+| **Main** | `{place_item, {MT,X,Y}}` | On placement | GUI → Main | Validate & spawn monkey |
+| **Main** | `{balloon_destroyed, Id, Health}` | On death | Region → Main | Award bananas |
+| **Main** | `{game_over, BloonId}` | On path end | Region → Main | Trigger lose condition |
+| **Main** | `update_gui_balloons` | 33ms timer | Timer → Main | Periodic GUI updates |
+| **Region** | `{find_bloon, Pos, Range}` | 300ms | Monkey → Region | Target acquisition |
+| **Region** | `{spawn_monkey, Type, Pos, Range}` | On placement | Main → Region | Create monkey FSM |
+| **Region** | `{spawn_bloon, Health, Pids, RegionId}` | On wave start | Main → Region | Create bloon FSM |
 
-- **Process Lifecycle**: All FSMs are temporary processes
-- **Cleanup**: Automatic on process termination
-- **Global Registry**: Only bloons are globally registered
-- **Local Registry**: Monkeys and arrows are not registered
-- **Supervision**: No direct supervision (fail-fast design)
-- **Database Consistency**: ACID transactions ensure state consistency
+## State Management & Persistence
+
+| **Server** | **State Persistence** | **Cleanup Strategy** | **Fault Tolerance** |
+|------------|-----------------------|----------------------|---------------------|
+| **GUI** | In-memory maps | Automatic on restart | Restart on crash |
+| **Main** | Banana count, region PIDs | Database clear + process kill | Supervisor restart |
+| **Region** | Region ID only | Process enumeration & kill | Supervisor restart |
+
+**Database Role:** Central state store for all game objects, cross-node replication, ACID transactions
