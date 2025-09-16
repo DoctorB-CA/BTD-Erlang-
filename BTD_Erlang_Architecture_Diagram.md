@@ -1,38 +1,6 @@
 # BTD-Erlang Distributed Game Architecture
 
-## How to View/Copy the Diagrams
-
-**To render these diagrams:**
-1. Copy the mermaid code blocks below
-2. Paste them into [Mermaid Live Editor](https://mermaid.live/)
-3. Or use GitHub/GitLab    A -.->|Damage| B
-    B -.->|Migration| B
-```
-
-**End of Simplified Diagram Code** - Copy everything from the ```mermaid line above to this closing ``` line.
-
----
-
-## Quick Copy Links
-
-**🔗 Quick Access Links:**
-- [Mermaid Live Editor](https://mermaid.live/) - Paste any diagram code here
-- [Mermaid Documentation](https://mermaid-js.github.io/mermaid/)
-- [VS Code Mermaid Extension](https://marketplace.visualstudio.com/items?itemName=bierner.markdown-mermaid)
-
-**📋 Copy Instructions:**
-1. Select from ````mermaid` to the closing `````
-2. Copy the entire code block
-3. Paste into Mermaid Live Editor or your preferred renderer
-
----
-
-## Key Architecture Componentsmarkdown preview
-4. Or use VS Code with Mermaid extension
-
 ## Main Architecture Diagram
-
-**Copy this code block:**
 
 ```mermaid
 graph TB
@@ -202,13 +170,7 @@ graph TB
     class GlobalReg service
 ```
 
-**End of Mermaid Code** - Copy everything from the ```mermaid line above to this closing ``` line.
-
----
-
-## Alternative: Simplified Network View
-
-**Copy this code block for a simpler network-focused diagram:**
+## Simplified Network View
 
 ```mermaid
 graph TB
@@ -255,61 +217,3 @@ graph TB
     A -.->|Damage| B
     B -.->|Migration| B
 ```
-
----
-
-### 1. **Supervision Tree**
-- **Main Supervisor**: Supervises the main server
-- **Worker Supervisors**: One per worker node, manages region servers
-- **Fault Tolerance**: Automatic restart of failed components
-
-### 2. **Distributed Nodes**
-- **Main Node**: Hosts GUI, main server, and disc-based Mnesia
-- **4 Worker Nodes**: Each manages one game region (0-3)
-- **Region Width**: 200 pixels per region (800px total map)
-
-### 3. **Core Servers**
-- **Main Server**: Central coordinator, banana economy, global game state
-- **Region Servers**: Manage game objects in their geographic region
-- **GUI**: wxErlang-based user interface with 30 FPS updates
-
-### 4. **Game Objects (FSMs)**
-- **Bloons**: Move along path, can migrate between regions/nodes
-- **Monkeys**: Attack bloons within range, spawn arrows
-- **Arrows**: Fly toward targets, deal damage on impact
-
-### 5. **Database Layer**
-- **Mnesia**: Distributed database with disc copies on main node
-- **Tables**: bloons, monkeys, darts (arrows)
-- **Replication**: RAM copies on worker nodes for performance
-
-### 6. **Communication Patterns**
-- **Global Registry**: Process discovery across nodes
-- **Message Passing**: Async casts for performance
-- **Cross-Region**: Balloon migration and targeting
-
-### 7. **Economic System**
-- **Banana Currency**: 1000 initial, earned from destroying bloons
-- **Monkey Costs**: Ground(100), Water(150), Fire(200), Air(250), Avatar(500)
-- **Reward Formula**: 5 + (Original Health × 2) bananas per kill
-
-### 8. **Game Flow**
-1. Player places monkeys (cost validation)
-2. Balloons spawn and move along path
-3. Monkeys detect and attack balloons
-4. Balloons migrate between regions as they move
-5. Destroyed balloons award bananas
-6. Game over when balloon reaches end
-7. Restart clears all processes and database
-
-### 9. **Fault Tolerance Features**
-- **Process Isolation**: Failure of one game object doesn't affect others
-- **Supervisor Restart**: Automatic recovery of critical components
-- **Database Consistency**: ACID properties via Mnesia transactions
-- **Global Registration**: Process discovery survives node failures
-
-### 10. **Performance Optimizations**
-- **Regional Distribution**: Load balanced across 4 nodes
-- **Batch GUI Updates**: 30 FPS instead of per-object updates
-- **Database Caching**: RAM copies on worker nodes
-- **Message Batching**: Combined database queries for GUI updates
